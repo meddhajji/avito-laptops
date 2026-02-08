@@ -15,7 +15,7 @@ interface RefreshStatus {
     scraping_progress: number;
     scraping_complete: boolean;
     scraping_message: string;
-    // Phase 2: Parsing (renamed from recognition)
+    // Phase 2: Parsing
     parsing_progress: number;
     parsing_complete: boolean;
     parsing_message: string;
@@ -40,6 +40,7 @@ export function RefreshDialog({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [failureCount, setFailureCount] = useState(0);
+    const [wasRunning, setWasRunning] = useState(false);
     const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
@@ -67,13 +68,34 @@ export function RefreshDialog({
 
             if (!res.ok) throw new Error("Status check failed");
             const data = await res.json();
+
+            // CRITICAL: Detect silent server reset
+            // If we were running but suddenly get 'idle', server probably crashed
+            if (wasRunning && data.status === "idle") {
+                setError("Server process reset unexpectedly. Please try again.");
+                setLoading(false);
+                setWasRunning(false);
+                return;
+            }
+
             setStatus(data);
             setFailureCount(0);
             setError(null);
 
+            // Track if we're running
+            if (data.status === "running") {
+                setWasRunning(true);
+            }
+
             if (data.status === "completed" && loading) {
                 setLoading(false);
+                setWasRunning(false);
                 if (onComplete) onComplete();
+            }
+
+            if (data.status === "error") {
+                setLoading(false);
+                setWasRunning(false);
             }
         } catch (err) {
             console.error(err);
@@ -91,6 +113,8 @@ export function RefreshDialog({
         setLoading(true);
         setError(null);
         setFailureCount(0);
+        setWasRunning(false);
+        setStatus(null);
         try {
             const res = await fetch(`${API_BASE}/api/refresh/start?pages=500`, { method: "POST" });
             const data = await res.json();
@@ -107,11 +131,13 @@ export function RefreshDialog({
     const retryConnection = () => {
         setError(null);
         setFailureCount(0);
+        setWasRunning(false);
         fetchStatus();
     };
 
     const isRunning = status?.status === "running";
     const isCompleted = status?.status === "completed";
+    const isError = status?.status === "error";
     const scrapingProgress = status?.scraping_progress || 0;
     const parsingProgress = status?.parsing_progress || 0;
 
@@ -188,7 +214,7 @@ export function RefreshDialog({
                     )}
 
                     {/* Phase 2: Parsing Progress - Show after scraping complete */}
-                    {status?.scraping_complete && status?.new_count > 0 && (
+                    {status?.scraping_complete && (status?.new_count > 0 || status?.parsing_message) && (
                         <div className="space-y-2">
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground flex items-center gap-2">
@@ -216,11 +242,11 @@ export function RefreshDialog({
                     )}
 
                     {/* Error with retry */}
-                    {error && (
+                    {(error || isError) && (
                         <div className="flex items-center justify-between gap-2 text-destructive text-sm bg-destructive/10 p-3 rounded-md">
                             <div className="flex items-center gap-2">
                                 <AlertCircle className="w-4 h-4" />
-                                {error}
+                                {error || status?.message}
                             </div>
                             <Button variant="ghost" size="sm" onClick={retryConnection}>
                                 <RefreshCw className="w-4 h-4 mr-1" />
@@ -230,7 +256,7 @@ export function RefreshDialog({
                     )}
 
                     {/* Success message */}
-                    {isCompleted && (
+                    {isCompleted && !error && (
                         <div className="flex items-center gap-2 text-green-500 text-sm bg-green-500/10 p-3 rounded-md">
                             <CheckCircle2 className="w-4 h-4" />
                             Database updated! Added {status?.items_added || 0} new items.
