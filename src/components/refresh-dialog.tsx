@@ -15,19 +15,16 @@ interface RefreshStatus {
     scraping_progress: number;
     scraping_complete: boolean;
     scraping_message: string;
-    // Phase 2: Recognition
-    recognition_progress: number;
-    recognition_complete: boolean;
-    recognition_message: string;
-    items_to_recognize: number;
-    regex_done: number;
-    llm_queued: number;
-    llm_done: number;
+    // Phase 2: Parsing (renamed from recognition)
+    parsing_progress: number;
+    parsing_complete: boolean;
+    parsing_message: string;
     // Stats
     new_count: number;
     sold_count: number;
     price_changed_count: number;
     total_scraped: number;
+    items_added: number;
 }
 
 export function RefreshDialog({
@@ -48,8 +45,7 @@ export function RefreshDialog({
     useEffect(() => {
         if (open) {
             fetchStatus();
-            // Use longer poll interval during LLM phase to avoid timeout issues
-            const interval = status?.scraping_complete && !status?.recognition_complete ? 3000 : 1500;
+            const interval = status?.scraping_complete && !status?.parsing_complete ? 2000 : 1500;
             pollIntervalRef.current = setInterval(fetchStatus, interval);
         }
         return () => {
@@ -57,12 +53,12 @@ export function RefreshDialog({
                 clearInterval(pollIntervalRef.current);
             }
         };
-    }, [open, status?.scraping_complete, status?.recognition_complete]);
+    }, [open, status?.scraping_complete, status?.parsing_complete]);
 
     const fetchStatus = async () => {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
             const res = await fetch(`${API_BASE}/api/refresh/status`, {
                 signal: controller.signal
@@ -83,9 +79,8 @@ export function RefreshDialog({
             console.error(err);
             setFailureCount(prev => {
                 const newCount = prev + 1;
-                // More tolerant - allow 10 failures before showing error
                 if (newCount > 10) {
-                    setError("Connection lost. Backend may be busy with LLM processing.");
+                    setError("Connection lost. Backend may be busy processing.");
                 }
                 return newCount;
             });
@@ -118,7 +113,7 @@ export function RefreshDialog({
     const isRunning = status?.status === "running";
     const isCompleted = status?.status === "completed";
     const scrapingProgress = status?.scraping_progress || 0;
-    const recognitionProgress = status?.recognition_progress || 0;
+    const parsingProgress = status?.parsing_progress || 0;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -192,38 +187,31 @@ export function RefreshDialog({
                         </div>
                     )}
 
-                    {/* Phase 2: Recognition Progress - Show after scraping complete */}
-                    {status?.scraping_complete && status?.items_to_recognize > 0 && (
+                    {/* Phase 2: Parsing Progress - Show after scraping complete */}
+                    {status?.scraping_complete && status?.new_count > 0 && (
                         <div className="space-y-2">
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground flex items-center gap-2">
-                                    {status?.recognition_complete ? (
+                                    {status?.parsing_complete ? (
                                         <CheckCircle2 className="w-4 h-4 text-green-500" />
                                     ) : (
                                         <Cpu className="w-4 h-4 animate-pulse text-orange-500" />
                                     )}
                                     <span>
-                                        {status?.recognition_message || "Recognizing specs..."}
+                                        {status?.parsing_message || "Parsing new items..."}
                                     </span>
                                 </span>
-                                <span className="font-medium">{Math.round(recognitionProgress)}%</span>
+                                <span className="font-medium">{Math.round(parsingProgress)}%</span>
                             </div>
                             <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
                                 <div
                                     className={cn(
                                         "h-full transition-all duration-500 ease-out",
-                                        status?.recognition_complete ? "bg-green-500" : "bg-orange-500"
+                                        status?.parsing_complete ? "bg-green-500" : "bg-orange-500"
                                     )}
-                                    style={{ width: `${recognitionProgress}%` }}
+                                    style={{ width: `${parsingProgress}%` }}
                                 />
                             </div>
-                            {/* Recognition breakdown */}
-                            {!status?.recognition_complete && (
-                                <div className="text-xs text-muted-foreground flex gap-4">
-                                    <span>Regex: {status?.regex_done || 0}</span>
-                                    <span>LLM: {status?.llm_done || 0}/{status?.llm_queued || 0}</span>
-                                </div>
-                            )}
                         </div>
                     )}
 
@@ -245,7 +233,7 @@ export function RefreshDialog({
                     {isCompleted && (
                         <div className="flex items-center gap-2 text-green-500 text-sm bg-green-500/10 p-3 rounded-md">
                             <CheckCircle2 className="w-4 h-4" />
-                            Database updated successfully!
+                            Database updated! Added {status?.items_added || 0} new items.
                         </div>
                     )}
                 </div>
