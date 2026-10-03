@@ -44,9 +44,9 @@ Sends queued listings to Gemini in batches (50 listings per request, 3 requests 
 - **Job-ID anchoring**: results are matched to listings by ID, never by position, so a skipped or reordered item cannot shift the others.
 - **Classification**: bags, chargers, repair services and other non-laptops are rejected. A laptop must have a CPU and either RAM or storage to be stored.
 - **No stuck queue**: each listing can be sent at most 3 times per run. One that keeps failing is left for the next run instead of blocking everything behind it.
-- **Retries**: rate limits and overloads (429/503) back off exponentially; a run in which a sizeable queue yields no results at all fails loudly.
+- **Retries**: rate limits and overloads (429/503) back off exponentially. A rejected request (bad model, key or config) aborts the run immediately, and a run in which a sizeable queue yields no results at all fails loudly.
 
-Tunable through environment variables: `GEMINI_MODEL`, `GEMINI_BATCH`, `PARSE_WORKERS`, `PARSE_ROUND_DELAY`, `GEMINI_THINKING_BUDGET`.
+Tunable through environment variables: `GEMINI_MODEL` (default `gemini-3.5-flash-lite`), `GEMINI_BATCH`, `PARSE_WORKERS`, `PARSE_ROUND_DELAY`.
 
 ### 4. Score (`score_laptops.py`)
 

@@ -16,8 +16,9 @@ Design:
     counter bumped first. A listing that fails MAX_ATTEMPTS times in a run is
     skipped (left in the queue for the next run) so it cannot stall the rest.
   - Batches are parsed concurrently; database writes stay on one connection.
-  - Rate limits and overloads (429/503) are retried with exponential backoff;
-    other errors get MAX_RETRIES attempts.
+  - Rate limits and overloads (429/503) are retried with exponential backoff,
+    other transient errors get MAX_RETRIES attempts, and a rejected request
+    (any other 4xx: bad model name, bad key, bad config) aborts the run at once.
 
 Usage:
     python parser.py                 # process the whole queue
@@ -48,8 +49,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "0"))  # extraction needs no reasoning tokens
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_BATCH = int(os.getenv("GEMINI_BATCH", "50"))              # listings per request
 PARSE_WORKERS = int(os.getenv("PARSE_WORKERS", "3"))             # concurrent requests
 ROUND_DELAY = float(os.getenv("PARSE_ROUND_DELAY", "5"))         # seconds between rounds (rate limiting)
@@ -194,14 +194,14 @@ def parse_batch_gemini(client: genai.Client, items: list[dict]) -> list[dict]:
 
     Each result: {"job_id": str, "is_laptop": bool, "specs": dict | None}.
     Returns [] if the request keeps failing; the caller leaves those listings
-    in the queue.
+    in the queue. Raises if Gemini rejects the request itself, since retrying
+    or moving on to the next batch cannot fix a bad model name, key or config.
     """
     config = genai_types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
         response_mime_type="application/json",
         response_schema=list[ListingResult],
         temperature=0,
-        thinking_config=genai_types.ThinkingConfig(thinking_budget=THINKING_BUDGET),
         automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
     )
     prompt = build_prompt(items)
@@ -223,6 +223,8 @@ def parse_batch_gemini(client: genai.Client, items: list[dict]) -> list[dict]:
             time.sleep(5)
 
         except Exception as e:
+            if isinstance(e, genai_errors.ClientError) and e.code != 429:
+                raise RuntimeError(f"Gemini rejected the request ({e.code}): {str(e)[:200]}") from e
             if _is_overload(e):
                 overloads += 1
                 if overloads > MAX_OVERLOAD_RETRIES:

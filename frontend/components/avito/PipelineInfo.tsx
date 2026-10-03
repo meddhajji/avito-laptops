@@ -20,7 +20,7 @@ export function ScraperInfo() {
     {
         step: "03",
         title: "Parse",
-        desc: "Batches of 50 listings are sent to Gemini Flash with a strict output schema. It filters out non-laptop items — bags, stands, repair services — and extracts 13 structured fields from the raw seller text: brand, CPU, RAM, GPU, storage, screen size, condition, and more.",
+        desc: "Batches of 50 listings are sent to Gemini Flash Lite with a strict output schema. It filters out non-laptop items — bags, stands, repair services — and extracts 13 structured fields from the raw seller text: brand, CPU, RAM, GPU, storage, screen size, condition, and more.",
     },
     {
         step: "04",
@@ -76,7 +76,7 @@ export function PipelineStats({ lastUpdate, total }: { lastUpdate: { created_at:
                     </span>
                     Updated: {new Date(lastUpdate.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                 </span>
-                <span>Parsed with Gemini Flash</span>
+                <span>Parsed with Gemini Flash Lite</span>
             </div>
         ) : (
             <div className="text-[11px] text-muted-foreground flex items-center justify-between border-t border-border/50 pt-3 pb-3 mt-1 px-6">
@@ -86,7 +86,7 @@ export function PipelineStats({ lastUpdate, total }: { lastUpdate: { created_at:
                     </span>
                     Statistics currently syncing...
                 </span>
-                <span>Parsed with Gemini Flash</span>
+                <span>Parsed with Gemini Flash Lite</span>
             </div>
         )}
     </DialogContent>

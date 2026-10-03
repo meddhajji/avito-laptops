@@ -123,3 +123,26 @@ def test_llm_output_schema_rejects_malformed_results():
     for bad in ('{"job_id": "7"}', '[{"is_laptop": true}]', '[{"job_id": "7", "is_laptop": true, "specs": {"gpu_type": "Hybrid"}}]', "not json"):
         with pytest.raises(avito_parser.ValidationError):
             avito_parser._RESULTS.validate_json(bad)
+
+
+class _FakeClient:
+    """Stands in for genai.Client: every generate_content call raises `error`."""
+
+    def __init__(self, error: Exception):
+        self.calls = 0
+        self.models = self
+        self._error = error
+
+    def generate_content(self, **kwargs):
+        self.calls += 1
+        raise self._error
+
+
+def test_rejected_request_aborts_instead_of_retrying():
+    bad_request = avito_parser.genai_errors.ClientError(400, {"error": {"message": "invalid argument"}})
+    client = _FakeClient(bad_request)
+
+    with pytest.raises(RuntimeError, match="rejected the request"):
+        avito_parser.parse_batch_gemini(client, [{"id": 1, "description": "hp elitebook"}])
+
+    assert client.calls == 1
