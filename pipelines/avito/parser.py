@@ -15,6 +15,8 @@ Design:
   - No head-of-line blocking: every listing sent to the LLM has its `attempts`
     counter bumped first. A listing that fails MAX_ATTEMPTS times in a run is
     skipped (left in the queue for the next run) so it cannot stall the rest.
+  - Rejections are remembered: a listing rejected as a non-laptop is recorded in
+    `rejected_listings` so the next refresh does not queue it again.
   - Batches are parsed concurrently; database writes stay on one connection.
   - Rate limits and overloads (429/503) are retried with exponential backoff,
     other transient errors get MAX_RETRIES attempts, and a rejected request
@@ -173,6 +175,24 @@ def delete_from_new_laptops(conn: psycopg.Connection, ids: list[int]):
         conn.execute("delete from new_laptops where id = any(%s)", (ids,))
 
 
+def remember_rejected(conn: psycopg.Connection, listings: list[dict]):
+    """Record rejected listings so refresh does not queue them again. Caller commits."""
+    if not listings:
+        return
+    with conn.cursor() as cur:
+        cur.executemany(
+            "insert into rejected_listings (avito_id, content_hash) values (%(avito_id)s, %(content_hash)s) "
+            "on conflict (avito_id) do update set content_hash = excluded.content_hash, rejected_at = now()",
+            listings,
+        )
+
+
+def forget_rejected(conn: psycopg.Connection, avito_ids: list[str]):
+    """A listing rewritten into a real laptop is no longer a reject. Caller commits."""
+    if avito_ids:
+        conn.execute("delete from rejected_listings where avito_id = any(%s)", (avito_ids,))
+
+
 # ---------------------------------------------------------------------------
 # Gemini extraction
 # ---------------------------------------------------------------------------
@@ -328,7 +348,7 @@ def store_results(conn: psycopg.Connection, items: list[dict], results: list[dic
 
     rows: list[dict] = []
     done_ids: list[int] = []   # staging rows to remove: stored laptops and rejected listings
-    rejected = 0
+    rejected: list[dict] = []
 
     for item in items:
         result = by_job_id.get(str(item["id"]))
@@ -339,15 +359,17 @@ def store_results(conn: psycopg.Connection, items: list[dict], results: list[dic
         specs = result.get("specs") or {}
         row = to_db_row(item, specs) if result.get("is_laptop") and is_valid_parse(specs) else None
         if row is None:
-            rejected += 1
+            rejected.append({"avito_id": str(item["avito_id"]), "content_hash": item.get("content_hash") or ""})
         else:
             rows.append(row)
 
     with conn.transaction():
         db.upsert_laptops(conn, rows)
+        remember_rejected(conn, rejected)
+        forget_rejected(conn, [row["avito_id"] for row in rows])
         delete_from_new_laptops(conn, done_ids)
 
-    return {"laptops": len(rows), "rejected": rejected, "unanswered": len(items) - len(done_ids)}
+    return {"laptops": len(rows), "rejected": len(rejected), "unanswered": len(items) - len(done_ids)}
 
 
 def process_staging(

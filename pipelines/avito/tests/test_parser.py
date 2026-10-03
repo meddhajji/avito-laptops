@@ -146,3 +146,21 @@ def test_rejected_request_aborts_instead_of_retrying():
         avito_parser.parse_batch_gemini(client, [{"id": 1, "description": "hp elitebook"}])
 
     assert client.calls == 1
+
+
+def test_rejected_listing_is_not_requeued_until_its_content_changes(conn):
+    ids = _queue(conn, 1)
+    reject = lambda batch: [{"job_id": str(i["id"]), "is_laptop": False, "specs": None} for i in batch]
+    avito_parser.process_staging(conn, reject, round_delay=0)
+    assert ids and _count(conn, "rejected_listings") == 1
+
+    # Next day: same listing, same title -> skipped without touching the queue
+    stats = refresh.diff_and_act(conn, [make_ad("0")], refresh.fetch_db_items(conn))
+    assert stats["new_items"] == 0 and _count(conn, "new_laptops") == 0
+
+    # The seller rewrites it -> examined again, and this time it is a laptop
+    stats = refresh.diff_and_act(conn, [make_ad("0", content_hash="hash-b")], refresh.fetch_db_items(conn))
+    conn.commit()
+    assert stats["new_items"] == 1
+    avito_parser.process_staging(conn, lambda batch: [_laptop(i) for i in batch], round_delay=0)
+    assert _count(conn, "laptops") == 1 and _count(conn, "rejected_listings") == 0

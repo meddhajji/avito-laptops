@@ -55,6 +55,7 @@ frontend/
 | `laptops` | One row per listing: raw fields, extracted specs, score, `value` (score per 1000 DH), sold status, timestamps |
 | `new_laptops` | Staging queue of scraped listings waiting for LLM extraction |
 | `price_history` | Every price a listing has had (written by a trigger) |
+| `rejected_listings` | Listings already rejected as non-laptops, so they are not sent to the LLM again |
 | `pipeline_runs` | One row per pipeline execution with status and counters |
 
 The schema lives in [`db/migrations`](db/migrations).
@@ -79,6 +80,7 @@ Run the pipeline, in full or step by step:
 
 ```bash
 python pipeline.py          # full run: scrape the whole category, parse, dedup
+python pipeline.py -p 5     # trial run on 5 pages
 python refresh.py -p 5      # scrape and diff 5 pages only
 python parser.py            # extract specs for everything in the staging queue
 ```

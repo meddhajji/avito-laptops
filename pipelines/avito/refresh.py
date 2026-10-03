@@ -51,6 +51,11 @@ def fetch_db_items(conn: psycopg.Connection) -> list[dict]:
     return rows
 
 
+def fetch_rejected(conn: psycopg.Connection) -> dict[str, str]:
+    """avito_id -> content_hash of listings the parser already rejected."""
+    return {r["avito_id"]: r["content_hash"] for r in conn.execute("select avito_id, content_hash from rejected_listings")}
+
+
 def insert_into_new_laptops(conn: psycopg.Connection, items: list[dict]):
     """Queue items in the new_laptops staging table.
 
@@ -162,6 +167,7 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
     Compare scraped ads against DB by avito_id + content_hash.
 
     Categories:
+      0. New ID, already rejected, same hash → skip (known non-laptop)
       1. New ID                            → insert into new_laptops (full parse)
       2. Same ID, hash changed             → insert into new_laptops (content updated, re-parse)
       3. Same ID, same hash, price/link diff → PATCH price/link only
@@ -187,7 +193,8 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
     new_items: list[dict] = []
     updates: list[dict] = []
     scraped_ids: set[str] = set()
-    stats = {"new": 0, "recycled": 0, "updated": 0, "unchanged": 0}
+    stats = {"new": 0, "recycled": 0, "updated": 0, "unchanged": 0, "known_rejects": 0}
+    rejected = fetch_rejected(conn)
 
     for ad in scraped_ads:
         aid = str(ad.get("avito_id", "")).strip()
@@ -199,7 +206,10 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
         price = float(ad.get("price", 0) or 0)
         current_hash = ad.get("content_hash", "")
 
-        if aid not in db_by_id:
+        if aid not in db_by_id and rejected.get(aid) == current_hash:
+            # Already examined and rejected as a non-laptop; unchanged since
+            stats["known_rejects"] += 1
+        elif aid not in db_by_id:
             # Category 1: genuinely new listing
             stats["new"] += 1
             new_items.append(ad)
@@ -233,6 +243,7 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
     logger.info("=" * 50)
     logger.info("  New listings (new ID):     %d", stats["new"])
     logger.info("  Content changed (re-parse): %d", stats["recycled"])
+    logger.info("  Known non-laptops (skipped): %d", stats["known_rejects"])
     logger.info("  Price/Link updated:        %d", stats["updated"])
     logger.info("  Unchanged (skipped):       %d", stats["unchanged"])
     logger.info("  Not found (sold?):         %d", len(ids_not_found))

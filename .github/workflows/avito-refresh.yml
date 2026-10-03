@@ -7,6 +7,11 @@ on:
 
   # Allows triggering the workflow manually from the GitHub Actions tab
   workflow_dispatch:
+    inputs:
+      pages:
+        description: "Pages to scrape (leave empty for the whole category)"
+        required: false
+        type: string
 
 jobs:
   run-pipeline:
@@ -33,5 +38,6 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PAGES: ${{ inputs.pages }}
         run: |
-          python pipeline.py
+          python pipeline.py ${PAGES:+--pages "$PAGES"}

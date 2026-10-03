@@ -28,6 +28,7 @@ Compares the scrape with the `laptops` table by Avito ID, in one transaction:
 
 | Situation | Action |
 | --- | --- |
+| New ID, previously rejected, title unchanged | skipped |
 | New ID | queued in `new_laptops` for extraction |
 | Same ID, title changed (`content_hash`) | queued for re-extraction |
 | Same ID, price or link changed | updated in place; the old price is kept in `price_history` |
@@ -63,6 +64,7 @@ The pipeline connects through `DATABASE_URL`. The schema is defined in `db/migra
 - `laptops` — main table, upserted by Avito ID.
 - `new_laptops` — staging queue, emptied as listings are extracted.
 - `price_history` — every price a listing has had (written by a trigger).
+- `rejected_listings` — listings already rejected as non-laptops; refresh skips them unless their title changes.
 - `pipeline_runs` — one row per run with its status and counters.
 
 ## Tests

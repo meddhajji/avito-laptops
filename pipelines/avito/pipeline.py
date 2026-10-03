@@ -12,7 +12,8 @@ Every execution is recorded in the `pipeline_runs` table, and the process exits
 non-zero if any step fails.
 
 Usage:
-    python pipeline.py
+    python pipeline.py           # whole category
+    python pipeline.py -p 5      # trial run on 5 pages
 """
 
 import sys
@@ -40,7 +41,7 @@ def run_step(script_name: str, func, *args, **kwargs):
     logger.info("%s finished in %.1fs\n", script_name, elapsed)
     return result, elapsed
 
-def main():
+def main(max_pages: int | None = None):
     total_start = time.time()
     logger.info("Starting Daily Avito Pipeline")
 
@@ -50,28 +51,34 @@ def main():
         logger.error("FATAL: cpu.csv not found in %s. CPU scoring would be zero for all items. Aborting.", cpu_csv.parent)
         sys.exit(1)
 
+    # Bookkeeping uses short-lived connections: a run takes hours on a first
+    # load, and a pooler will drop a connection left idle that long.
     with db.connect() as conn:
         db.migrate(conn)
         run_id = db.start_run(conn)
-        stats: dict = {}
-        try:
-            # Step 1: Scrape & Diff (populate new_laptops table)
-            refresh_stats, t1 = run_step("refresh", refresh_main)
-            stats.update(refresh_stats)
 
-            # Step 2: Parse, score & upload (loop until new_laptops is empty)
-            parse_stats, t2 = run_step("parser", parser_main)
-            stats.update(parsed=parse_stats["laptops"], rejected=parse_stats["rejected"],
-                         queue_remaining=parse_stats["remaining"])
+    stats: dict = {}
+    status, error = "success", None
+    try:
+        # Step 1: Scrape & Diff (populate new_laptops table)
+        refresh_stats, t1 = run_step("refresh", refresh_main, max_pages)
+        stats.update(refresh_stats)
 
-            # Step 3: Flag duplicate rows in the laptops table
-            stats["duplicates"], t3 = run_step("dedup", dedup_main)
-        except Exception as e:
-            logger.exception("Pipeline failed")
-            db.finish_run(conn, run_id, "failed", stats, error=str(e)[:500])
-            sys.exit(1)
+        # Step 2: Parse, score & upload (loop until new_laptops is empty)
+        parse_stats, t2 = run_step("parser", parser_main)
+        stats.update(parsed=parse_stats["laptops"], rejected=parse_stats["rejected"],
+                     queue_remaining=parse_stats["remaining"])
 
-        db.finish_run(conn, run_id, "success", stats)
+        # Step 3: Flag duplicate rows in the laptops table
+        stats["duplicates"], t3 = run_step("dedup", dedup_main)
+    except Exception as e:
+        logger.exception("Pipeline failed")
+        status, error = "failed", str(e)[:500]
+
+    with db.connect() as conn:
+        db.finish_run(conn, run_id, status, stats, error=error)
+    if status == "failed":
+        sys.exit(1)
 
     total_time = time.time() - total_start
     logger.info("=" * 60)
@@ -84,4 +91,9 @@ def main():
     logger.info("=" * 60)
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    arg_parser = argparse.ArgumentParser(description="Run the full Avito pipeline")
+    arg_parser.add_argument("-p", "--pages", type=int, default=None,
+                            help="Scrape only this many pages (trial run; never marks listings sold)")
+    main(arg_parser.parse_args().pages)
