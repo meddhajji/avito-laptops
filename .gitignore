@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+
+.pytest_cache/
+
+# Pipeline outputs and local experiments (regenerated each run)
+pipelines/avito/outputs/
+pipelines/avito/data/
+pipelines/avito/pipeline_report.json
+laptops_new.csv
+scratch/
+repomix-output.xml
+
+# Node
+node_modules/
+.next/
+out/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs and build artifacts
+*.log
+out.txt
+build_err.txt
+project_csv_headers.txt
+
+# Redundant codebases
+frontend/hajji/
+
+# AI Agents & Local Scratch
+.agents/
+frontend/.agents/
+cortex.config.json
+frontend/scratch/
+frontend/tsconfig.tsbuildinfo

@@ -1,0 +1,37 @@
+name: Daily Avito Data Refresh
+
+on:
+  # Daily schedule is off until the database is on the new schema; re-enable with:
+  # schedule:
+  #   - cron: '0 1 * * *'   # 01:00 UTC, around 2:00 AM in Morocco
+
+  # Allows triggering the workflow manually from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' # Caches dependencies to speed up future runs
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipelines/avito/requirements.txt
+          
+      - name: Run data pipeline
+        working-directory: ./pipelines/avito
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python pipeline.py
