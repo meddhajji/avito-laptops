@@ -1,43 +1,43 @@
 # -*- coding: utf-8 -*-
-from __future__ import annotations
 """
 parser.py
 
-Reads items from the `new_laptops` staging table, sends them to Gemini for
-spec extraction and laptop/non-laptop classification, upserts confirmed laptops
-into `laptops` (on conflict avito_id), and clears processed rows from `new_laptops`.
+Reads listings from the `new_laptops` staging queue, sends them to Gemini for
+laptop/non-laptop classification and spec extraction, upserts confirmed laptops
+into `laptops` (on conflict avito_id) and removes processed rows from the queue.
 
-Key architecture changes vs. previous version:
-  - job_id anchoring: each item is tagged with its staging row ID. Gemini returns
-    results keyed by job_id (in any order). This eliminates positional desync —
-    if Gemini returns 97 results for 100 items, exactly those 97 get matched
-    correctly instead of shifting all subsequent items.
-  - is_laptop classification: Gemini explicitly labels every item true/false.
-    Non-laptops are discarded from staging without inserting to laptops.
-  - Hardened is_valid_parse: requires cpu (≥2 chars) + (ram or storage).
-    Brand alone no longer passes.
-  - on_conflict=avito_id: consistent with the avito_id identity anchor architecture.
-  - Batch size 100 (was 200): fewer items per prompt = less chance of Gemini
-    skipping or merging items.
-  - Separate discard/upsert staging ID lists: if upsert fails, only the
-    confirmed laptops stay in staging for retry; non-laptops are still cleared.
-  - Infinite 503 retry: model overload errors retry indefinitely with
-    exponential backoff (30s→60s→120s→240s→300s cap). Other errors give up
-    after MAX_RETRIES.
+Design:
+  - Structured output: Gemini is given a JSON schema, and every response is
+    validated with pydantic before anything is written.
+  - job_id anchoring: each listing is tagged with its staging row id and results
+    are matched back by that id, never by position. If Gemini returns 97 results
+    for 100 listings, exactly those 97 are stored.
+  - No head-of-line blocking: every listing sent to the LLM has its `attempts`
+    counter bumped first. A listing that fails MAX_ATTEMPTS times in a run is
+    skipped (left in the queue for the next run) so it cannot stall the rest.
+  - Batches are parsed concurrently; database writes stay on one connection.
+  - Rate limits and overloads (429/503) are retried with exponential backoff;
+    other errors get MAX_RETRIES attempts.
 
 Usage:
-    python parser.py                 # process all items
-    python parser.py -n 50           # process only the first 50 items (test)
+    python parser.py                 # process the whole queue
+    python parser.py -n 50           # stop after ~50 listings (test)
 """
+from __future__ import annotations
 
 import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Literal
 
 import psycopg
 from dotenv import load_dotenv
 from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import db
 from score_laptops import calc_laptop_score
@@ -49,36 +49,58 @@ logger = logging.getLogger(__name__)
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_BATCH = 100   # reduced from 200; smaller batches reduce Gemini desync risk
-MAX_RETRIES = 3
+THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "0"))  # extraction needs no reasoning tokens
+GEMINI_BATCH = int(os.getenv("GEMINI_BATCH", "50"))              # listings per request
+PARSE_WORKERS = int(os.getenv("PARSE_WORKERS", "3"))             # concurrent requests
+ROUND_DELAY = float(os.getenv("PARSE_ROUND_DELAY", "5"))         # seconds between rounds (rate limiting)
 
-# Columns that Gemini must extract
-SPEC_COLS = [
-    "brand", "model", "cpu", "ram", "storage", "ssd",
-    "gpu", "gpu_type", "gpu_vram", "screen_size",
-    "refresh_rate", "new", "touchscreen",
-]
+MAX_ATTEMPTS = 3            # LLM sends per listing per run
+MAX_RETRIES = 3             # per request, for malformed output and unexpected API errors
+MAX_OVERLOAD_RETRIES = 6    # per request, for 429/503
+MIN_PRICE = 800             # DH; below this it is an accessory, not a laptop
+MAX_PRICE = 100_000         # DH; above this the price is not real
+OUTAGE_MIN_QUEUE = 20       # a queue this big yielding zero results means the LLM is down
 
-NUMERIC_COLS = [
-    "price", "ram", "storage", "ssd", "gpu_vram",
-    "screen_size", "refresh_rate", "new", "touchscreen",
-]
-BOOL_COLS = ["is_shop", "has_delivery"]
-FLAG_COLS = ["ssd", "new", "touchscreen"]  # stored as 0/1
+NUMERIC_SPECS = ["ram", "storage", "gpu_vram", "screen_size", "refresh_rate"]
+TEXT_SPECS = ["brand", "model", "cpu", "gpu"]
+FLAG_SPECS = ["ssd", "new", "touchscreen"]  # stored as 0/1
 GPU_TYPES = {"Integrated", "Dedicated"}
+
+
+# ---------------------------------------------------------------------------
+# LLM output schema
+# ---------------------------------------------------------------------------
+class Specs(BaseModel):
+    brand: str | None = None
+    model: str | None = None
+    cpu: str | None = None
+    ram: float | None = None
+    storage: float | None = None
+    ssd: int | None = None
+    gpu: str | None = None
+    gpu_type: Literal["Integrated", "Dedicated"] | None = None
+    gpu_vram: float | None = None
+    screen_size: float | None = None
+    refresh_rate: float | None = None
+    new: int | None = None
+    touchscreen: int | None = None
+
+
+class ListingResult(BaseModel):
+    job_id: str
+    is_laptop: bool
+    specs: Specs | None = None
+
+
+_RESULTS = TypeAdapter(list[ListingResult])
 
 SYSTEM_PROMPT = """You are a data extraction pipeline for laptop listings from a Moroccan classifieds site (Avito.ma).
 
 INPUT: A JSON array. Each element has exactly two fields:
   "job_id": a string identifier — copy it unchanged to your output
-  "text": the raw listing description (title + description, ASCII-normalized)
+  "text": the raw listing text (title + description, lowercased, may mix French, Arabic and Darija)
 
-OUTPUT: A JSON array with exactly one element per input element (results may be in ANY ORDER), each with:
-{
-  "job_id": "<same string as in input>",
-  "is_laptop": true or false,
-  "specs": { ... }
-}
+OUTPUT: exactly one result per input element (in any order), with job_id, is_laptop and specs.
 
 FILTER — set is_laptop=false for ALL of the following. Be strict:
 - Laptop bags, sleeves, backpacks, cases, pouches
@@ -96,10 +118,7 @@ FILTER — set is_laptop=false for ALL of the following. Be strict:
 Set is_laptop=true ONLY for complete, functional laptop computers
 (gaming laptops, ultrabooks, MacBooks, Chromebooks, workstation laptops are all valid).
 
-SPECS (required only when is_laptop=true; omit the specs key or use {} when is_laptop=false):
-Keys: brand, model, cpu, ram, storage, ssd, gpu, gpu_type, gpu_vram, screen_size, refresh_rate, new, touchscreen
-
-SPEC RULES:
+SPECS (only when is_laptop=true; use null specs when is_laptop=false):
 - brand, model: capitalize first letter of each word only. No consecutive capitals.
   Write "Hp" not "HP", "Msi" not "MSI", "Asus" not "ASUS", "Dell" not "DELL", "Lenovo" not "LENOVO".
 - cpu: commercial name. Keep hyphen for Intel iX series (i5-8350u, i7-1165G7) and AMD Ryzen only.
@@ -107,65 +126,58 @@ SPEC RULES:
 - gpu: commercial name with spaces not dashes. First letter of brand prefix capitalized only.
   Examples: "Rtx 4060", "Gtx 1650 Ti", "Radeon Rx 6600m", "Mx 450", "Rtx 5090".
 - gpu_type: "Integrated", "Dedicated", or null.
-- ram, storage, gpu_vram: numbers in GB (1 TB = 1000 GB). ram and storage must be integers.
+- ram, storage, gpu_vram: numbers in GB (1 TB = 1000 GB). ram and storage must be whole numbers.
 - ssd: 1 if SSD/NVMe/M.2, 0 if HDD, null if unknown.
 - screen_size: number in inches (e.g. 15.6), null if unknown.
 - refresh_rate: number in Hz (e.g. 144), null if unknown.
 - new: 1 if explicitly brand new/sealed/neuf/جديد, 0 if used/occasion/reconditionné, null if unclear.
 - touchscreen: 1 if touchscreen/tactile mentioned, null if not mentioned.
-- Use null for any spec that cannot be clearly determined from the text.
-
-Output ONLY the JSON array. No markdown, no backticks, no explanation, no preamble."""
+- Use null for any spec that cannot be clearly determined from the text. Never guess."""
 
 
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
-def fetch_new_laptops_batch(conn: psycopg.Connection, limit: int = GEMINI_BATCH) -> list[dict]:
-    """Fetch a batch of rows from new_laptops ordered by id ascending."""
-    rows = conn.execute("select * from new_laptops order by id limit %s", (limit,)).fetchall()
-    conn.commit()  # don't sit idle-in-transaction during the LLM call
-    return rows
+def reset_attempts(conn: psycopg.Connection):
+    """Give every queued listing a fresh set of attempts for this run."""
+    conn.execute("update new_laptops set attempts = 0 where attempts <> 0")
+    conn.commit()
+
+
+def claim_batch(conn: psycopg.Connection, limit: int) -> list[dict]:
+    """Take up to `limit` queued listings that still have attempts left, and count the attempt.
+
+    The attempt is committed BEFORE the LLM call: whatever happens next, a
+    listing can only be claimed MAX_ATTEMPTS times per run.
+    """
+    rows = conn.execute(
+        "update new_laptops set attempts = attempts + 1 "
+        "where id in (select id from new_laptops where attempts < %s order by attempts, id limit %s) "
+        "returning *",
+        (MAX_ATTEMPTS, limit),
+    ).fetchall()
+    conn.commit()
+    return sorted(rows, key=lambda r: r["id"])
 
 
 def count_new_laptops(conn: psycopg.Connection) -> int:
-    """Count remaining rows in new_laptops."""
+    """Count rows left in the staging queue."""
     n = conn.execute("select count(*) as n from new_laptops").fetchone()["n"]
     conn.commit()
     return n
 
 
 def delete_from_new_laptops(conn: psycopg.Connection, ids: list[int]):
-    """Delete processed rows from new_laptops by their staging id."""
-    if not ids:
-        return
-    conn.execute("delete from new_laptops where id = any(%s)", (ids,))
-    conn.commit()
-
-
-def upsert_to_laptops(conn: psycopg.Connection, rows: list[dict]) -> bool:
-    """Upsert rows into the laptops table, conflict resolution on avito_id."""
-    if not rows:
-        return True
-    try:
-        db.upsert_laptops(conn, rows)
-        conn.commit()
-    except psycopg.Error as e:
-        conn.rollback()
-        logger.error("Upsert failed: %s", e)
-        return False
-    return True
+    """Remove processed rows from the staging queue. Caller commits."""
+    if ids:
+        conn.execute("delete from new_laptops where id = any(%s)", (ids,))
 
 
 # ---------------------------------------------------------------------------
-# Gemini parsing — job_id anchored, infinite 503 retry
+# Gemini extraction
 # ---------------------------------------------------------------------------
 def build_prompt(items: list[dict]) -> str:
-    """Build a job_id-anchored JSON payload.
-
-    Gemini returns results in any order — the caller uses job_id lookup,
-    not positional zip, to match results back to items.
-    """
+    """JSON payload of {job_id, text}; results are matched back by job_id, not position."""
     payload = [
         {"job_id": str(item["id"]), "text": item.get("description", "")}
         for item in items
@@ -173,102 +185,62 @@ def build_prompt(items: list[dict]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def parse_batch_gemini(client, items: list[dict]) -> list[dict]:
-    """Send a batch to Gemini and return result objects.
+def _is_overload(error: Exception) -> bool:
+    return isinstance(error, genai_errors.APIError) and error.code in (429, 503)
 
-    Each result: {"job_id": str, "is_laptop": bool, "specs": dict}.
 
-    Retry policy:
-    - 503 UNAVAILABLE (model overloaded): retry INDEFINITELY with exponential
-      backoff starting at 30s, capped at 5 minutes. The parser will never
-      give up on a 503 — it will keep sleeping and retrying until the model
-      responds.
-    - JSON parse errors or other API errors: up to MAX_RETRIES attempts, then
-      returns [] so the caller leaves the batch in staging for the next run.
+def parse_batch_gemini(client: genai.Client, items: list[dict]) -> list[dict]:
+    """Send one batch to Gemini and return validated results.
+
+    Each result: {"job_id": str, "is_laptop": bool, "specs": dict | None}.
+    Returns [] if the request keeps failing; the caller leaves those listings
+    in the queue.
     """
+    config = genai_types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        response_mime_type="application/json",
+        response_schema=list[ListingResult],
+        temperature=0,
+        thinking_config=genai_types.ThinkingConfig(thinking_budget=THINKING_BUDGET),
+        automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
+    )
     prompt = build_prompt(items)
-    parse_failures = 0
-    overload_backoff = 30  # seconds; doubles on each 503, capped at 300
-    overload_retries = 0
-    MAX_OVERLOAD_RETRIES = 10
+    failures = 0
+    overloads = 0
+    backoff = 15  # seconds; doubles on each 429/503, capped at 4 minutes
 
     while True:
         try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=[
-                    {"role": "user", "parts": [{"text": SYSTEM_PROMPT}]},
-                    {"role": "user", "parts": [{"text": prompt}]},
-                ],
-            )
+            response = client.models.generate_content(model=MODEL, contents=prompt, config=config)
+            results = _RESULTS.validate_json(response.text or "")
+            return [r.model_dump() for r in results]
 
-            text = response.text.strip()
-
-            # Strip markdown fences if present
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
-
-            parsed = json.loads(text)
-
-            if not isinstance(parsed, list):
-                parse_failures += 1
-                logger.error(
-                    "Gemini returned %s instead of list (failure %d/%d) — retrying",
-                    type(parsed).__name__, parse_failures, MAX_RETRIES,
-                )
-                if parse_failures >= MAX_RETRIES:
-                    logger.error("Too many non-list responses. Skipping batch.")
-                    return []
-                time.sleep(15)
-                continue
-
-            # Success — reset overload backoff
-            overload_backoff = 30
-            valid = [r for r in parsed if isinstance(r, dict) and "job_id" in r]
-            logger.info("Gemini returned %d valid results for %d items", len(valid), len(items))
-            return valid
-
-        except json.JSONDecodeError as e:
-            parse_failures += 1
-            logger.error("JSON parse error (failure %d/%d): %s", parse_failures, MAX_RETRIES, e)
-            if parse_failures >= MAX_RETRIES:
-                logger.error("Too many JSON errors. Skipping batch.")
+        except ValidationError as e:
+            failures += 1
+            logger.error("Invalid LLM output (failure %d/%d): %s", failures, MAX_RETRIES, str(e)[:200])
+            if failures >= MAX_RETRIES:
                 return []
-            time.sleep(15)
+            time.sleep(5)
 
         except Exception as e:
-            err_str = str(e)
-            if "503" in err_str or "UNAVAILABLE" in err_str:
-                overload_retries += 1
-                if overload_retries > MAX_OVERLOAD_RETRIES:
-                    logger.error("Max 503 retries reached. Skipping batch.")
+            if _is_overload(e):
+                overloads += 1
+                if overloads > MAX_OVERLOAD_RETRIES:
+                    logger.error("Still rate-limited/overloaded after %d retries. Skipping batch.", MAX_OVERLOAD_RETRIES)
                     return []
-                # Model is overloaded — wait and retry.
-                # This is temporary congestion, NOT a bug.
-                logger.warning(
-                    "503 UNAVAILABLE — model overloaded. Sleeping %ds before retry "
-                    "(retry %d/%d)...",
-                    overload_backoff, overload_retries, MAX_OVERLOAD_RETRIES
-                )
-                time.sleep(overload_backoff)
-                overload_backoff = min(overload_backoff * 2, 300)  # cap at 5 min
+                logger.warning("Gemini %s — sleeping %ds (retry %d/%d)", e.code, backoff, overloads, MAX_OVERLOAD_RETRIES)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 240)
             else:
-                parse_failures += 1
-                logger.error(
-                    "API error (failure %d/%d): %s",
-                    parse_failures, MAX_RETRIES, e,
-                )
-                if parse_failures >= MAX_RETRIES:
-                    logger.error("Too many API errors. Skipping batch.")
+                failures += 1
+                logger.error("API error (failure %d/%d): %s", failures, MAX_RETRIES, str(e)[:200])
+                if failures >= MAX_RETRIES:
                     return []
-                time.sleep(30)
+                time.sleep(15)
 
 
 # ---------------------------------------------------------------------------
-# Scoring & row building
+# Row building
 # ---------------------------------------------------------------------------
 def truncate_description(desc: str, target: int = 80) -> str:
     if not desc or len(desc) <= target:
@@ -280,242 +252,170 @@ def truncate_description(desc: str, target: int = 80) -> str:
 def is_valid_parse(specs: dict) -> bool:
     """A valid laptop parse requires a CPU string (≥2 chars) and at least one of RAM or storage.
 
-    Brand alone is NOT sufficient — Gemini regularly extracts brand="Hp" from
-    listings like "Support PC portable HP" (a PC stand). The dual requirement of
-    cpu + memory prevents accessories from slipping through.
+    Brand alone is NOT sufficient — a listing like "Support PC portable HP" (a PC
+    stand) yields brand="Hp". Requiring cpu + memory keeps accessories out.
 
     The threshold is ≥2 chars (not 3) to allow valid short CPUs: i7, i5, i3, M4, M1, M2.
     """
     cpu = specs.get("cpu")
-    ram = specs.get("ram")
-    storage = specs.get("storage")
-
     if not cpu or len(str(cpu).strip()) < 2:
         return False
-    if not ram and not storage:
-        return False
-    return True
+    return bool(specs.get("ram") or specs.get("storage"))
+
+
+def _to_float(value) -> float | None:
+    try:
+        return float(value) if value not in (None, "", "null") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _to_text(value) -> str | None:
+    if value in (None, "null"):
+        return None
+    return str(value).strip() or None
 
 
 def to_db_row(raw_item: dict, specs: dict) -> dict | None:
-    """Merge raw scraped data + parsed specs + score into a DB row.
+    """Merge scraped data + extracted specs + score into a `laptops` row.
 
     Returns None if the item fails post-parse sanity checks.
     """
-    out: dict = {}
-
-    # Metadata from scraped item
-    out["avito_id"] = str(raw_item.get("avito_id", ""))
-    out["description"] = truncate_description(str(raw_item.get("description", "")))
-    out["link"] = str(raw_item.get("link", ""))
-    out["city"] = str(raw_item.get("city", ""))
-    out["content_hash"] = str(raw_item.get("content_hash", ""))
-
-    # Price
-    try:
-        out["price"] = float(raw_item.get("price", 0) or 0)
-    except (ValueError, TypeError):
-        out["price"] = None
-
-    # Post-parse price sanity
-    if out["price"] and out["price"] < 800:
-        logger.info(
-            "Discarding staging id=%s: price %.0f DH below laptop floor",
-            raw_item.get("id"), out["price"],
-        )
+    price = _to_float(raw_item.get("price")) or 0.0
+    if 0 < price < MIN_PRICE:
+        logger.info("Discarding staging id=%s: price %.0f DH below laptop floor", raw_item.get("id"), price)
         return None
 
-    # Booleans from scraper
-    for col in BOOL_COLS:
-        val = raw_item.get(col, False)
-        if isinstance(val, bool):
-            out[col] = val
-        elif str(val).lower() in ("true", "1", "yes"):
-            out[col] = True
-        else:
-            out[col] = False
+    out: dict = {
+        "avito_id": str(raw_item.get("avito_id", "")),
+        "description": truncate_description(str(raw_item.get("description", ""))),
+        "link": str(raw_item.get("link", "")),
+        "city": str(raw_item.get("city") or ""),
+        "content_hash": str(raw_item.get("content_hash") or ""),
+        "price": price,
+        "is_shop": bool(raw_item.get("is_shop", False)),
+        "has_delivery": bool(raw_item.get("has_delivery", False)),
+        "listed_at": raw_item.get("listed_at"),
+        "is_sold": False,
+    }
 
-    # Specs from Gemini
-    for col in SPEC_COLS:
-        val = specs.get(col)
-        if val is None or val == "null" or val == "":
-            out[col] = None if col in NUMERIC_COLS else ""
-        elif col in NUMERIC_COLS:
-            try:
-                out[col] = float(val)
-            except (ValueError, TypeError):
-                out[col] = None
-        else:
-            out[col] = str(val)
+    for col in TEXT_SPECS:
+        out[col] = _to_text(specs.get(col))
+    for col in NUMERIC_SPECS:
+        out[col] = _to_float(specs.get(col))
+    for col in FLAG_SPECS:
+        value = _to_float(specs.get(col))
+        out[col] = None if value is None else int(value > 0)
 
-    # Constrained columns: anything outside the allowed set becomes null
-    for col in FLAG_COLS:
-        if out[col] is not None:
-            out[col] = 1 if out[col] > 0 else 0
-    gpu_type = out["gpu_type"].strip().capitalize()
+    gpu_type = str(specs.get("gpu_type") or "").strip().capitalize()
     out["gpu_type"] = gpu_type if gpu_type in GPU_TYPES else None
 
-    out["listed_at"] = raw_item.get("listed_at")
-    out["is_sold"] = False
     out["score"] = calc_laptop_score(out)
     return out
 
 
 # ---------------------------------------------------------------------------
-# Main processing loop
+# Processing
 # ---------------------------------------------------------------------------
-def main(max_items: int | None = None):
+def store_results(conn: psycopg.Connection, items: list[dict], results: list[dict]) -> dict:
+    """Write one batch's results in a single transaction.
+
+    Listings the LLM returned nothing for stay in the queue. Returns counters.
+    """
+    by_job_id = {str(r["job_id"]): r for r in results if isinstance(r, dict) and "job_id" in r}
+
+    rows: list[dict] = []
+    done_ids: list[int] = []   # staging rows to remove: stored laptops and rejected listings
+    rejected = 0
+
+    for item in items:
+        result = by_job_id.get(str(item["id"]))
+        if result is None:
+            continue
+
+        done_ids.append(item["id"])
+        specs = result.get("specs") or {}
+        row = to_db_row(item, specs) if result.get("is_laptop") and is_valid_parse(specs) else None
+        if row is None:
+            rejected += 1
+        else:
+            rows.append(row)
+
+    with conn.transaction():
+        db.upsert_laptops(conn, rows)
+        delete_from_new_laptops(conn, done_ids)
+
+    return {"laptops": len(rows), "rejected": rejected, "unanswered": len(items) - len(done_ids)}
+
+
+def process_staging(
+    conn: psycopg.Connection,
+    parse_fn: Callable[[list[dict]], list[dict]],
+    max_items: int | None = None,
+    round_delay: float = ROUND_DELAY,
+) -> dict:
+    """Drain the staging queue. `parse_fn` maps a batch of listings to LLM results."""
+    totals = {"laptops": 0, "rejected": 0, "unanswered": 0}
+    queued = count_new_laptops(conn)
+    if queued == 0:
+        return {**totals, "queued": 0, "remaining": 0}
+
+    logger.info("Processing %d queued listings (batch=%d, workers=%d)", queued, GEMINI_BATCH, PARSE_WORKERS)
+    reset_attempts(conn)
+
+    with ThreadPoolExecutor(max_workers=PARSE_WORKERS) as pool:
+        while True:
+            claimed = claim_batch(conn, GEMINI_BATCH * PARSE_WORKERS)
+            if not claimed:
+                break
+
+            # Absurd prices are dropped without spending LLM tokens
+            overpriced = {r["id"] for r in claimed if (r.get("price") or 0) > MAX_PRICE}
+            if overpriced:
+                delete_from_new_laptops(conn, list(overpriced))
+                conn.commit()
+                totals["rejected"] += len(overpriced)
+                claimed = [r for r in claimed if r["id"] not in overpriced]
+
+            batches = [claimed[i:i + GEMINI_BATCH] for i in range(0, len(claimed), GEMINI_BATCH)]
+            for batch, results in zip(batches, pool.map(parse_fn, batches)):
+                counts = store_results(conn, batch, results)
+                for key, value in counts.items():
+                    totals[key] += value
+
+            done = totals["laptops"] + totals["rejected"]
+            logger.info("Progress: %d/%d processed (%d laptops, %d rejected)", done, queued, totals["laptops"], totals["rejected"])
+            if max_items is not None and done >= max_items:
+                break
+            time.sleep(round_delay)
+
+    remaining = count_new_laptops(conn)
+    if totals["laptops"] + totals["rejected"] == 0 and queued >= OUTAGE_MIN_QUEUE:
+        raise RuntimeError(f"LLM returned no usable results for any of the {queued} queued listings")
+    if remaining:
+        logger.warning("%d listings left in the queue; they will be retried next run.", remaining)
+    return {**totals, "queued": queued, "remaining": remaining}
+
+
+def main(max_items: int | None = None) -> dict:
     if not GEMINI_KEY:
         raise RuntimeError("GEMINI_API_KEY is not set")
 
+    client = genai.Client(api_key=GEMINI_KEY)
     with db.connect() as conn:
-        _process_staging(conn, max_items)
+        stats = process_staging(conn, lambda batch: parse_batch_gemini(client, batch), max_items)
 
-
-def _process_staging(conn: psycopg.Connection, max_items: int | None):
-    total = count_new_laptops(conn)
-    if total == 0:
-        print("new_laptops table is empty. Nothing to process.")
-        return
-
-    if max_items and total > max_items:
-        total = max_items
-    print(f"Processing {total} items from new_laptops table...")
-
-    logger.info("Loading Gemini client...")
-    gemini_client = genai.Client(api_key=GEMINI_KEY)
-    logger.info("Gemini client loaded.")
-
-    processed = 0
-    failed_ids: set[int] = set()
-    max_loops = (total // GEMINI_BATCH + 1) * MAX_RETRIES
-
-    for loop in range(max_loops):
-        batch = fetch_new_laptops_batch(conn, GEMINI_BATCH)
-        if not batch:
-            break
-
-        # Skip items that have already failed parsing in this run
-        fresh_batch = [item for item in batch if item["id"] not in failed_ids]
-        if not fresh_batch:
-            logger.warning("All remaining %d items in batch are in failed_ids. Stopping.", len(batch))
-            break
-
-        # Pre-filter overpriced items without spending Gemini credits
-        valid_price_batch = []
-        auto_discard_ids = []
-        for item in fresh_batch:
-            price = float(item.get("price", 0) or 0)
-            if price > 100000:
-                auto_discard_ids.append(item["id"])
-            else:
-                valid_price_batch.append(item)
-
-        if auto_discard_ids:
-            delete_from_new_laptops(conn, auto_discard_ids)
-            processed += len(auto_discard_ids)
-
-        if not valid_price_batch:
-            continue
-
-        logger.info("--- Loop %d: sending %d items to Gemini ---", loop + 1, len(valid_price_batch))
-
-        # parse_batch_gemini retries 503s indefinitely — will not return until success or hard failure
-        raw_output = parse_batch_gemini(gemini_client, valid_price_batch)
-
-        # Build lookup by job_id — order-independent matching
-        parsed_by_id: dict[str, dict] = {
-            str(r["job_id"]): r
-            for r in raw_output
-            if isinstance(r, dict) and "job_id" in r
-        }
-
-        db_rows: list[dict] = []
-        upsert_staging_ids: list[int] = []   # delete from staging only if upsert succeeds
-        discard_staging_ids: list[int] = []  # delete regardless (non-laptops, sanity failures)
-        seen_links: set[str] = set()
-
-        for item in valid_price_batch:
-            job_id = str(item["id"])
-            result = parsed_by_id.get(job_id)
-
-            if result is None:
-                # Gemini didn't return a result for this specific job_id in this batch.
-                # Do NOT discard it; leave it in staging so the next run can try again.
-                logger.warning("No Gemini result for job_id=%s. Keeping in new_laptops.", job_id)
-                continue
-
-            if not result.get("is_laptop"):
-                logger.debug("Non-laptop discarded job_id=%s", job_id)
-                discard_staging_ids.append(item["id"])
-                continue
-
-            specs = result.get("specs") or {}
-            if not is_valid_parse(specs):
-                logger.debug("Weak parse for job_id=%s (discarded)", job_id)
-                discard_staging_ids.append(item["id"])
-                continue
-
-            db_row = to_db_row(item, specs)
-            if db_row is None:
-                discard_staging_ids.append(item["id"])
-                continue
-
-            link = str(item.get("link", ""))
-            if link in seen_links:
-                logger.debug("Duplicate link in batch, discarding: %s", link[:60])
-                discard_staging_ids.append(item["id"])
-                continue
-            seen_links.add(link)
-
-            db_rows.append(db_row)
-            upsert_staging_ids.append(item["id"])
-
-        # Upsert valid laptops then clean staging
-        if db_rows:
-            success = upsert_to_laptops(conn, db_rows)
-            if success:
-                delete_from_new_laptops(conn, upsert_staging_ids + discard_staging_ids)
-                processed += len(upsert_staging_ids) + len(discard_staging_ids)
-                logger.info(
-                    "Loop %d: upserted=%d non-laptops=%d total_processed=%d",
-                    loop + 1, len(db_rows), len(discard_staging_ids), processed,
-                )
-            else:
-                delete_from_new_laptops(conn, discard_staging_ids)
-                processed += len(discard_staging_ids)
-                logger.error(
-                    "Loop %d: upsert failed — %d items kept in staging for retry.",
-                    loop + 1, len(upsert_staging_ids),
-                )
-        elif discard_staging_ids:
-            delete_from_new_laptops(conn, discard_staging_ids)
-            processed += len(discard_staging_ids)
-            logger.info("Loop %d: all %d items were non-laptops, discarded.", loop + 1, len(discard_staging_ids))
-
-        # Rate limiting: stay well under 15 RPM on Gemini free tier
-        time.sleep(10)
-
-        if max_items is not None and processed >= max_items:
-            break
-
-    remaining = count_new_laptops(conn)
     print("\nProcessing complete!")
-    print(f"  Successfully processed: {processed}")
-    print(f"  Remaining in new_laptops: {remaining}")
-    if failed_ids:
-        print(f"  Items queued for retry next run: {len(failed_ids)}")
+    print(f"  Laptops stored:         {stats['laptops']}")
+    print(f"  Rejected (not laptops): {stats['rejected']}")
+    print(f"  Remaining in queue:     {stats['remaining']}")
+    return stats
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Parse and upload new laptops")
-    parser.add_argument(
-        "-n", "--num",
-        type=int,
-        default=None,
-        help="Max items to process (default: all)",
-    )
-    args = parser.parse_args()
+    arg_parser = argparse.ArgumentParser(description="Extract specs for queued listings")
+    arg_parser.add_argument("-n", "--num", type=int, default=None, help="Stop after about this many listings (default: all)")
+    args = arg_parser.parse_args()
     main(args.num)

@@ -6,7 +6,7 @@ The master script that runs the entire daily Avito data refresh pipeline.
 It executes the following steps in sequence:
 1. refresh.py       (Scrape Avito, diff with DB by avito_id, populate new_laptops)
 2. parser.py        (Loop: parse specs, score, upsert to laptops, clear new_laptops)
-3. dedup.py         (Remove duplicate active listings)
+3. dedup.py         (Flag duplicate active listings)
 
 Every execution is recorded in the `pipeline_runs` table, and the process exits
 non-zero if any step fails.
@@ -18,20 +18,12 @@ Usage:
 import sys
 import time
 import logging
-import importlib.util
 from pathlib import Path
 
 import db
-from refresh import main as refresh_main
 from dedup import main as dedup_main
-
-# 'parser' shadows the Python stdlib module of the same name — load by file path
-_parser_spec = importlib.util.spec_from_file_location(
-    "avito_parser", Path(__file__).parent / "parser.py"
-)
-_parser_mod = importlib.util.module_from_spec(_parser_spec)
-_parser_spec.loader.exec_module(_parser_mod)
-parser_main = _parser_mod.main
+from parser import main as parser_main
+from refresh import main as refresh_main
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -64,13 +56,15 @@ def main():
         stats: dict = {}
         try:
             # Step 1: Scrape & Diff (populate new_laptops table)
-            refresh_stats, t1 = run_step("refresh", refresh_main, max_pages=500)
+            refresh_stats, t1 = run_step("refresh", refresh_main)
             stats.update(refresh_stats)
 
             # Step 2: Parse, score & upload (loop until new_laptops is empty)
-            _, t2 = run_step("parser", parser_main)
+            parse_stats, t2 = run_step("parser", parser_main)
+            stats.update(parsed=parse_stats["laptops"], rejected=parse_stats["rejected"],
+                         queue_remaining=parse_stats["remaining"])
 
-            # Step 3: Remove duplicate rows from the laptops table
+            # Step 3: Flag duplicate rows in the laptops table
             stats["duplicates"], t3 = run_step("dedup", dedup_main)
         except Exception as e:
             logger.exception("Pipeline failed")
