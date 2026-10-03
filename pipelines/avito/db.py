@@ -61,6 +61,8 @@ def migrate(conn: psycopg.Connection) -> list[str]:
         "create table if not exists schema_migrations ("
         "name text primary key, applied_at timestamptz not null default now())"
     )
+    # Same reason as in 0001_init.sql: keep it out of any auto-generated public API
+    conn.execute("alter table schema_migrations enable row level security")
     conn.commit()
     done = {r["name"] for r in conn.execute("select name from schema_migrations")}
 
