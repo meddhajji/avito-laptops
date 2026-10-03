@@ -10,22 +10,22 @@ export function ScraperInfo() {
     {
         step: "01",
         title: "Crawl",
-        desc: "Each night an async scraper fetches up to 500 pages from Avito.ma and extracts listing data directly from the page source.",
+        desc: "Each night a scraper walks the whole laptop category on Avito.ma, retrying failed pages, and extracts listing data directly from the page source.",
     },
     {
         step: "02",
         title: "Diff",
-        desc: "Every listing is compared to the database by its Avito ID. New listings go into a staging table, price changes are patched directly, and anything that disappeared gets marked as sold. A content hash detects when a listing is rewritten into a different item and forces a full re-parse.",
+        desc: "Every listing is compared to the database by its Avito ID. New listings go into a staging table, price changes are patched directly, and anything missing from two complete scrapes in a row gets marked as sold. A content hash detects when a listing is rewritten into a different item and forces a full re-parse.",
     },
     {
         step: "03",
         title: "Parse",
-        desc: "Batches of 100 listings are sent to Gemini Flash Lite. It filters out non-laptop items — bags, stands, repair services — and extracts 13 structured fields from the raw seller text: brand, CPU, RAM, GPU, storage, screen size, condition, and more.",
+        desc: "Batches of 50 listings are sent to Gemini Flash with a strict output schema. It filters out non-laptop items — bags, stands, repair services — and extracts 13 structured fields from the raw seller text: brand, CPU, RAM, GPU, storage, screen size, condition, and more.",
     },
     {
         step: "04",
         title: "Score",
-        desc: "Each laptop gets a composite score based on CPU benchmarks cross-referenced against a 200,000-entry database, plus GPU tier, RAM, storage, screen, and condition. Weighted across all components.",
+        desc: "Each laptop gets a composite score based on CPU benchmarks cross-referenced against a 6,000-entry benchmark list, plus GPU tier, RAM, storage, screen, and condition. Weighted across all components.",
     },
     {
         step: "05",
@@ -76,7 +76,7 @@ export function PipelineStats({ lastUpdate, total }: { lastUpdate: { created_at:
                     </span>
                     Updated: {new Date(lastUpdate.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                 </span>
-                <span>Parsed with Gemini Flash Lite</span>
+                <span>Parsed with Gemini Flash</span>
             </div>
         ) : (
             <div className="text-[11px] text-muted-foreground flex items-center justify-between border-t border-border/50 pt-3 pb-3 mt-1 px-6">
@@ -86,7 +86,7 @@ export function PipelineStats({ lastUpdate, total }: { lastUpdate: { created_at:
                     </span>
                     Statistics currently syncing...
                 </span>
-                <span>Parsed with Gemini Flash Lite</span>
+                <span>Parsed with Gemini Flash</span>
             </div>
         )}
     </DialogContent>

@@ -1,27 +1,75 @@
-# Avito Laptop Scraper Pipeline
+# Avito pipeline
 
-This directory contains the data pipeline responsible for gathering, parsing, and scoring laptop listings from Avito.ma. It operates in three distinct stages: scraping, AI parsing, and scoring.
+Collects laptop listings from Avito.ma, extracts hardware specs with an LLM, scores them and keeps the database in sync with what is currently for sale.
 
-## Pipeline Architecture
+```bash
+python pipeline.py          # full run: refresh → parse → dedup
+python refresh.py -p 5      # scrape and diff 5 pages only (never marks anything sold)
+python parser.py -n 50      # parse about 50 queued listings
+python dedup.py             # recompute duplicate flags
+python admin_score.py --all # re-score every laptop after changing the scoring
+python verify.py -n 20      # spot-check stored rows against their live Avito pages
+```
 
-### 1. Refreshing and Scraping
-The first stage is handled by `refresh.py`. It scrapes up to 500 pages of laptop listings and diffs them against the database by **Avito ID**. A **content_hash** (MD5 of the listing title) detects when an existing listing has been rewritten into a different item, which forces a re-parse. New or changed items are queued in the `new_laptops` staging table; price changes, sold flags and re-listings are applied directly, all in one transaction.
+## Stages
 
-### 2. AI Specification Extraction
-The second stage is executed by `parser.py`. It pulls new listings from the staging table in batches of 100. Key design points:
-- **Job-ID Anchoring**: Each listing is tagged with its staging ID, ensuring Gemini's output is perfectly synchronized regardless of the order it returns items.
-- **503 Retries**: Handles Gemini API capacity spikes with exponential backoff (up to 10 retries per batch) instead of crashing.
-- **Classification**: Gemini explicitly classifies items as laptops/non-laptops; junk listings (bags, chargers, etc.) are automatically discarded from staging.
-- **Structured Extraction**: Extracts 13 structured fields including brand, model, CPU, RAM, storage, and GPU details.
+### 1. Scrape (`scraper.py`)
 
-### 3. Hardware Scoring Engine
-During the parsing stage, `score_laptops.py` acts as the scoring engine. It assigns a CPU score by fuzzy matching the extracted processor details against a PassMark benchmark database, normalizing the result to a 0-1000 scale. The GPU score is determined by a rule-based lookup table that includes bonuses for VRAM. Secondary components like RAM, storage, screen specifications, and device condition are also scored using custom lookup tables. The final composite score is a weighted combination: 35% CPU, 25% GPU, 12% RAM, 8% storage, 10% screen, and 10% condition.
+Reads the listing pages of the laptop category and extracts the ads from the page's embedded JSON.
+
+- Pages are fetched until Avito returns an empty one, so the whole category is covered whatever its size.
+- Each page gets 3 attempts with exponential backoff; pages that still fail get one more pass at the end.
+- Guards at ingestion: only `/ordinateurs_portables/` links, no listings under 800 DH (accessories) or over 100,000 DH.
+- The result says whether the scrape was **complete**: it reached the end, no page failed, and the ads seen add up to at least 90% of the total Avito reports. The last check stops a block page that renders as an empty listing from looking like the end of the category.
+
+### 2. Diff (`refresh.py`)
+
+Compares the scrape with the `laptops` table by Avito ID, in one transaction:
+
+| Situation | Action |
+| --- | --- |
+| New ID | queued in `new_laptops` for extraction |
+| Same ID, title changed (`content_hash`) | queued for re-extraction |
+| Same ID, price or link changed | updated in place; the old price is kept in `price_history` |
+| In the DB but not in the scrape | marked sold, under the conditions below |
+| Sold in the DB but back in the scrape | marked active again |
+
+A listing is marked sold only when the scrape was complete, the scrape found at least 40% of the listings the DB believes are active, **and** the listing has not been seen for 36 hours (two daily runs). Listings shift between pages while a scrape is running, so a single miss proves nothing.
+
+### 3. Extract (`parser.py`)
+
+Sends queued listings to Gemini in batches (50 listings per request, 3 requests in parallel by default).
+
+- **Structured output**: the model is given a JSON schema and every response is validated with pydantic before anything is written.
+- **Job-ID anchoring**: results are matched to listings by ID, never by position, so a skipped or reordered item cannot shift the others.
+- **Classification**: bags, chargers, repair services and other non-laptops are rejected. A laptop must have a CPU and either RAM or storage to be stored.
+- **No stuck queue**: each listing can be sent at most 3 times per run. One that keeps failing is left for the next run instead of blocking everything behind it.
+- **Retries**: rate limits and overloads (429/503) back off exponentially; a run in which a sizeable queue yields no results at all fails loudly.
+
+Tunable through environment variables: `GEMINI_MODEL`, `GEMINI_BATCH`, `PARSE_WORKERS`, `PARSE_ROUND_DELAY`, `GEMINI_THINKING_BUDGET`.
+
+### 4. Score (`score_laptops.py`)
+
+Each laptop gets a 0–1000 hardware score: the CPU is matched against a PassMark benchmark list (`cpu.csv`), the GPU against a tier table with a VRAM bonus, and RAM, storage, screen and condition against lookup tables. Weights: 35% CPU, 25% GPU, 12% RAM, 8% storage, 10% screen, 10% condition. The database derives `value` (score per 1000 DH) from it.
+
+### 5. Deduplicate (`dedup.py`)
+
+Shops often post the same laptop several times. Active listings with the same brand, model, CPU, RAM, storage, GPU, price, condition and city are grouped; the newest stays visible and the others get `duplicate_of` set. Rows are flagged rather than deleted, because a deleted listing that is still live would be scraped and extracted again the next day.
 
 ## Database
 
-The pipeline connects to PostgreSQL through `DATABASE_URL`. The schema is defined in `db/migrations` at the repository root and applied with `python db.py migrate` (the full pipeline also applies pending migrations on start).
+The pipeline connects through `DATABASE_URL`. The schema is defined in `db/migrations` at the repository root and applied with `python db.py migrate` (the full pipeline also applies pending migrations on start).
 
-- `laptops` is the main table, upserted by Avito ID.
-- `new_laptops` is the staging queue, cleared as items are parsed.
-- `price_history` records every price a listing has had (written by a trigger).
-- `pipeline_runs` logs each execution with its status and counters.
+- `laptops` — main table, upserted by Avito ID.
+- `new_laptops` — staging queue, emptied as listings are extracted.
+- `price_history` — every price a listing has had (written by a trigger).
+- `pipeline_runs` — one row per run with its status and counters.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+TEST_DATABASE_URL=postgresql://... pytest
+```
+
+Database tests run against a real PostgreSQL, each in its own throwaway schema, and are skipped when `TEST_DATABASE_URL` is not set. The scraper and LLM are replaced by fakes, so tests need no network or API key.

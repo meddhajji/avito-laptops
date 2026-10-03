@@ -37,7 +37,7 @@ pipelines/avito/
   refresh.py           Diffs the scrape against the DB (new, changed, price update, sold)
   parser.py            LLM spec extraction and laptop / non-laptop classification
   score_laptops.py     Hardware scoring (CPU benchmarks, GPU tiers, RAM, storage, screen)
-  dedup.py             Removes duplicate active listings
+  dedup.py             Flags duplicate active listings
   db.py                Connection, migrations, seed, run bookkeeping
   tests/               pytest suite (runs against a real PostgreSQL)
 frontend/
@@ -78,7 +78,7 @@ python db.py seed           # optional: load the sample listings
 Run the pipeline, in full or step by step:
 
 ```bash
-python pipeline.py          # full run: scrape 500 pages, parse, dedup
+python pipeline.py          # full run: scrape the whole category, parse, dedup
 python refresh.py -p 5      # scrape and diff 5 pages only
 python parser.py            # extract specs for everything in the staging queue
 ```
@@ -98,11 +98,11 @@ The dashboard works with only `DATABASE_URL`; `GROQ_API_KEY` is needed for the c
 
 ```bash
 cd pipelines/avito
-pip install pytest
+pip install -r requirements-dev.txt
 TEST_DATABASE_URL=postgresql://... pytest
 ```
 
-Each test runs in its own throwaway schema. Without `TEST_DATABASE_URL`, database tests are skipped.
+Each database test runs in its own throwaway schema; the scraper and LLM are replaced by fakes, so no network or API key is needed. Without `TEST_DATABASE_URL`, database tests are skipped.
 
 ## Automation
 
