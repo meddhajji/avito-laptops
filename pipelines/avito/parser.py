@@ -123,8 +123,13 @@ Set is_laptop=true ONLY for complete, functional laptop computers
 SPECS (only when is_laptop=true; use null specs when is_laptop=false):
 - brand, model: capitalize first letter of each word only. No consecutive capitals.
   Write "Hp" not "HP", "Msi" not "MSI", "Asus" not "ASUS", "Dell" not "DELL", "Lenovo" not "LENOVO".
-- cpu: commercial name. Keep hyphen for Intel iX series (i5-8350u, i7-1165G7) and AMD Ryzen only.
-  Lowercase after hyphen. Examples: "i7-1255u", "Ryzen 5 5500u", "Core Ultra 7 155h", "M3 Pro", "Ultra 9 285hx".
+- cpu: the processor exactly as far as the text identifies it. Never leave it null when the text names a processor.
+  * Exact model given: use it. Keep the hyphen for Intel iX series, lowercase after the hyphen.
+    Examples: "i7-1255u", "i5-8350u", "Ryzen 5 5500u", "Core Ultra 7 155h", "M3 Pro", "Celeron N4020".
+  * Only family and generation given ("i5 8eme", "i7 13th gen", "core i5 de 6ème génération"):
+    write family + generation as "i5 8th gen", "i7 13th gen", "Ryzen 5 3rd gen".
+  * Only the family given: write just the family ("i5", "Ryzen 7", "Celeron").
+  * Never invent a model number that is not in the text.
 - gpu: commercial name with spaces not dashes. First letter of brand prefix capitalized only.
   Examples: "Rtx 4060", "Gtx 1650 Ti", "Radeon Rx 6600m", "Mx 450", "Rtx 5090".
 - gpu_type: "Integrated", "Dedicated", or null.
@@ -272,17 +277,15 @@ def truncate_description(desc: str, target: int = 80) -> str:
 
 
 def is_valid_parse(specs: dict) -> bool:
-    """A valid laptop parse requires a CPU string (≥2 chars) and at least one of RAM or storage.
+    """A listing classified as a laptop is kept when it states at least one core spec.
 
-    Brand alone is NOT sufficient — a listing like "Support PC portable HP" (a PC
-    stand) yields brand="Hp". Requiring cpu + memory keeps accessories out.
-
-    The threshold is ≥2 chars (not 3) to allow valid short CPUs: i7, i5, i3, M4, M1, M2.
+    The LLM's is_laptop flag does the classification; this only filters out
+    listings with nothing to store (e.g. a shop advertising "PC portables,
+    contactez-nous"). A missing CPU is not a reason to drop a real laptop:
+    plenty of sellers write only "MacBook Air 2018, 8 Go, 256 Go".
     """
-    cpu = specs.get("cpu")
-    if not cpu or len(str(cpu).strip()) < 2:
-        return False
-    return bool(specs.get("ram") or specs.get("storage"))
+    cpu = str(specs.get("cpu") or "").strip()
+    return bool(len(cpu) >= 2 or specs.get("ram") or specs.get("storage"))
 
 
 def _to_float(value) -> float | None:

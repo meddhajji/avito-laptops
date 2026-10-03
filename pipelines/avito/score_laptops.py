@@ -11,6 +11,11 @@ from typing import Dict, List, Optional, Tuple
 # =========================================================================
 
 
+# "i5 8th gen", "ryzen 5 3rd gen": family + generation with no model number
+_GENERATION_RE = re.compile(r"^(i[3579]|ryzen [3579])\s+(\d{1,2})(?:st|nd|rd|th)\s+gen")
+_LAPTOP_SUFFIX = r"(?:u|h|hq|hk|hs|hx|p|y|m|mq|g\d)\b"
+
+
 class CPUScorer:
     _cpu_db: Dict[str, int] = {}
     _max_score: int = 1
@@ -95,6 +100,21 @@ class CPUScorer:
         return []
 
     @classmethod
+    def _generation_matches(cls, query: str) -> List[Tuple[str, int]]:
+        """Laptop CPUs of a family + generation, for listings that give no model number.
+
+        "i5 8th gen" -> i5-8250U, i5-8265U, i5-8300H, ... (desktop parts excluded).
+        """
+        m = _GENERATION_RE.match(query.lower().strip())
+        if not m:
+            return []
+        family, gen = m.groups()
+        separator = "-" if family.startswith("i") else " "
+        digits = r"\d{3}" if len(gen) == 1 else r"\d{2,3}"
+        pattern = re.compile(rf"{family}{separator}{gen}{digits}{_LAPTOP_SUFFIX}")
+        return [(n, s) for n, s in cls._cpu_db.items() if pattern.search(n)]
+
+    @classmethod
     def get_score(cls, cpu: str) -> int:
         cls._load_database()
         if not cls._cpu_db or not cpu or cpu == "Unknown":
@@ -104,7 +124,7 @@ class CPUScorer:
         if cpu in cls._cache:
             return cls._cache[cpu]
 
-        matches = cls._find_matches(cpu)
+        matches = cls._generation_matches(cpu) or cls._find_matches(cpu)
         if not matches:
             cls._cache[cpu] = 0
             return 0

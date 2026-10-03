@@ -42,7 +42,7 @@ def test_non_laptops_and_weak_parses_are_rejected(conn):
     ids = _queue(conn, 3)
     answers = {
         str(ids[0]): {"job_id": str(ids[0]), "is_laptop": False, "specs": None},                        # a laptop bag
-        str(ids[1]): {"job_id": str(ids[1]), "is_laptop": True, "specs": {"brand": "Hp"}},               # brand only
+        str(ids[1]): {"job_id": str(ids[1]), "is_laptop": True, "specs": {"brand": "Hp"}},               # no spec at all
         str(ids[2]): {"job_id": str(ids[2]), "is_laptop": True, "specs": GOOD_SPECS},
     }
 
@@ -164,3 +164,9 @@ def test_rejected_listing_is_not_requeued_until_its_content_changes(conn):
     assert stats["new_items"] == 1
     avito_parser.process_staging(conn, lambda batch: [_laptop(i) for i in batch], round_delay=0)
     assert _count(conn, "laptops") == 1 and _count(conn, "rejected_listings") == 0
+
+
+def test_laptop_without_cpu_is_kept_when_other_specs_are_stated():
+    assert avito_parser.is_valid_parse({"brand": "Apple", "model": "Macbook Air 2018", "ram": 8, "storage": 256})
+    assert avito_parser.is_valid_parse({"cpu": "i5 8th gen"})
+    assert not avito_parser.is_valid_parse({"brand": "Lenovo", "model": "Thinkpad"})
