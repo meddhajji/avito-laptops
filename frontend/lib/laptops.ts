@@ -58,7 +58,8 @@ const toPrefixTsQuery = (search: string) => {
  * parameters; only fixed column names are interpolated.
  */
 function buildWhere(params: LaptopSearchParams) {
-    const conditions: string[] = [];
+    // Duplicate listings (same specs, price and city) are hidden behind the newest one
+    const conditions: string[] = ["duplicate_of IS NULL"];
     const values: Array<string | number> = [];
     const bind = (value: string | number) => {
         values.push(value);
@@ -105,7 +106,7 @@ function buildWhere(params: LaptopSearchParams) {
         conditions.push(`coalesce(listed_at, created_at) >= ${bind(threshold)}`);
     }
 
-    return { where: conditions.length ? `WHERE ${conditions.join(" AND ")}` : "", values };
+    return { where: `WHERE ${conditions.join(" AND ")}`, values };
 }
 
 export async function fetchLaptops(params: LaptopSearchParams): Promise<{ laptops: Laptop[]; total: number }> {

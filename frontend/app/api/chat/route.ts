@@ -414,7 +414,7 @@ TOOL RULES (queryLaptops):
                                         console.log("[AVITOPT TOOL] queryLaptops args:", JSON.stringify(effectiveInput));
 
                                         const resultLimit = Math.min(Math.max(effectiveInput.limit ?? 10, 1), 20);
-                                        const conditions: string[] = [];
+                                        const conditions: string[] = ["duplicate_of IS NULL"];
                                         if (!effectiveInput.show_sold) {
                                             conditions.push("is_sold = false");
                                         }

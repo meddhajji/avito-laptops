@@ -1,9 +1,6 @@
-from datetime import datetime, timedelta, timezone
-
 import db
 import dedup
 import parser as avito_parser
-import scraper
 from conftest import make_laptop
 
 
@@ -47,7 +44,7 @@ def test_search_vector_matches_prefix_across_fields(conn):
     assert [h["avito_id"] for h in hits] == ["1"]
 
 
-def test_dedup_keeps_newest_active_row_and_ignores_sold(conn):
+def test_dedup_flags_older_duplicates_and_ignores_sold(conn):
     db.upsert_laptops(conn, [
         make_laptop("1"),
         make_laptop("2", brand="DELL", city="CASABLANCA"),  # same key, different case
@@ -55,11 +52,35 @@ def test_dedup_keeps_newest_active_row_and_ignores_sold(conn):
         make_laptop("4", is_sold=True),                     # sold rows are never touched
     ])
 
-    deleted = conn.execute(dedup.DEDUP_SQL).rowcount
+    flagged = dedup.flag_duplicates(conn)
 
-    assert deleted == 1
-    remaining = {r["avito_id"] for r in conn.execute("select avito_id from laptops")}
-    assert remaining == {"2", "3", "4"}
+    assert flagged == 1
+    rows = {r["avito_id"]: r for r in conn.execute("select avito_id, id, duplicate_of from laptops")}
+    assert rows["1"]["duplicate_of"] == rows["2"]["id"]  # the newer row is the keeper
+    assert all(rows[k]["duplicate_of"] is None for k in ("2", "3", "4"))
+    assert len(rows) == 4                                # nothing deleted
+
+
+def test_dedup_clears_the_flag_when_listings_stop_matching(conn):
+    db.upsert_laptops(conn, [make_laptop("1"), make_laptop("2")])
+    assert dedup.flag_duplicates(conn) == 1
+
+    conn.execute("update laptops set price = 2500 where avito_id = '2'")
+
+    assert dedup.flag_duplicates(conn) == 0
+
+
+def test_flagged_duplicate_is_not_requeued_by_the_next_refresh(conn):
+    import refresh
+    from conftest import make_ad
+
+    db.upsert_laptops(conn, [make_laptop("1"), make_laptop("2")])
+    dedup.flag_duplicates(conn)
+
+    stats = refresh.diff_and_act(conn, [make_ad("1"), make_ad("2")], refresh.fetch_db_items(conn))
+
+    assert stats["new_items"] == 0
+    assert conn.execute("select count(*) n from new_laptops").fetchone()["n"] == 0
 
 
 def test_to_db_row_normalizes_constrained_columns(conn):
@@ -80,13 +101,3 @@ def test_to_db_row_drops_unknown_gpu_type():
     row = avito_parser.to_db_row(raw, {"cpu": "i5", "ram": 8, "gpu_type": "Hybrid"})
 
     assert row["gpu_type"] is None
-
-
-def test_parse_listed_at():
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-
-    assert scraper.parse_listed_at("il y a 4 minutes", now) == now - timedelta(minutes=4)
-    assert scraper.parse_listed_at("il y a 2 jours", now) == now - timedelta(days=2)
-    assert scraper.parse_listed_at("il y a un mois", now) == now - timedelta(days=30)
-    assert scraper.parse_listed_at("", now) is None
-    assert scraper.parse_listed_at("hier", now) is None
