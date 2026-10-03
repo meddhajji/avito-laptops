@@ -3,14 +3,19 @@ import refresh
 from conftest import make_ad, make_laptop
 
 
-def _run_diff(conn, ads):
-    stats = refresh.diff_and_act(conn, ads, refresh.fetch_db_items(conn))
+def _run_diff(conn, ads, scrape_complete=True):
+    stats = refresh.diff_and_act(conn, ads, refresh.fetch_db_items(conn), scrape_complete=scrape_complete)
     conn.commit()
     return stats
 
 
 def _one(conn, sql, params=None):
     return conn.execute(sql, params).fetchone()
+
+
+def _age_last_seen(conn, hours: int):
+    """Pretend no run has seen these listings for `hours`."""
+    conn.execute("update laptops set last_seen_at = now() - make_interval(hours => %s)", (hours,))
 
 
 def test_new_listing_is_queued_for_parsing(conn):
@@ -58,8 +63,9 @@ def test_changed_content_hash_is_requeued(conn):
     assert _one(conn, "select content_hash from new_laptops")["content_hash"] == "hash-b"
 
 
-def test_missing_listing_is_marked_sold(conn):
+def test_listing_unseen_past_the_grace_period_is_marked_sold(conn):
     db.upsert_laptops(conn, [make_laptop("1"), make_laptop("2")])
+    _age_last_seen(conn, refresh.SOLD_GRACE_HOURS + 1)
 
     stats = _run_diff(conn, [make_ad("1")])
 
@@ -69,14 +75,46 @@ def test_missing_listing_is_marked_sold(conn):
     assert _one(conn, "select is_sold from laptops where avito_id = '1'")["is_sold"] is False
 
 
-def test_safety_guard_skips_mark_sold_on_a_bad_scrape(conn):
-    db.upsert_laptops(conn, [make_laptop(str(i)) for i in range(10)])
+def test_listing_missed_once_is_not_marked_sold(conn):
+    # Seen by the previous daily run, missing from this one: could just have
+    # shifted between pages while we were scraping.
+    db.upsert_laptops(conn, [make_laptop("1"), make_laptop("2")])
+    _age_last_seen(conn, 24)
 
-    # 3 of 10 active listings scraped: below the 40% threshold
+    stats = _run_diff(conn, [make_ad("1")])
+
+    assert stats["marked_sold"] == 0
+    assert _one(conn, "select is_sold from laptops where avito_id = '2'")["is_sold"] is False
+
+
+def test_incomplete_scrape_never_marks_sold(conn):
+    db.upsert_laptops(conn, [make_laptop("1"), make_laptop("2")])
+    _age_last_seen(conn, 500)
+
+    stats = _run_diff(conn, [make_ad("1")], scrape_complete=False)
+
+    assert stats["marked_sold"] == 0
+    assert _one(conn, "select count(*) n from laptops where is_sold")["n"] == 0
+
+
+def test_safety_guard_skips_mark_sold_when_scrape_is_suspiciously_small(conn):
+    db.upsert_laptops(conn, [make_laptop(str(i)) for i in range(10)])
+    _age_last_seen(conn, 500)
+
+    # A "complete" scrape that found only 3 of 10 active listings: below the 40% threshold
     stats = _run_diff(conn, [make_ad(str(i)) for i in range(3)])
 
     assert stats["marked_sold"] == 0
     assert _one(conn, "select count(*) n from laptops where is_sold")["n"] == 0
+
+
+def test_seen_listing_gets_its_last_seen_refreshed(conn):
+    db.upsert_laptops(conn, [make_laptop("1")])
+    _age_last_seen(conn, 500)
+
+    _run_diff(conn, [make_ad("1")])
+
+    assert _one(conn, "select last_seen_at > now() - interval '1 minute' as fresh from laptops")["fresh"] is True
 
 
 def test_relisted_item_becomes_active_again(conn):

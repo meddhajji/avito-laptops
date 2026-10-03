@@ -6,31 +6,37 @@ Scrapes Avito, diffs against the `laptops` table by avito_id + content_hash, and
   1. Queues genuinely new items in the `new_laptops` staging table
   2. Queues items whose content changed (same ID, new content hash) for re-parse
   3. Updates price/link changes directly in `laptops` (old prices go to price_history)
-  4. Marks items not found in the scrape as is_sold=True
+  4. Marks items that disappeared from Avito as is_sold=True
   5. Un-sells items that reappeared and stamps last_seen_at
 
 All database writes happen in a single transaction.
 
-Safety guard: mark_sold is skipped if scraped_count < 40% of ACTIVE (not total) DB
-items. This avoids bulk-marking valid data as sold when the scraper has a bad run,
-without triggering on a table inflated with already-sold rows.
+When is a listing "sold"? Only when all of these hold:
+  - the scrape covered the whole category with no failed pages (a partial or
+    degraded scrape proves nothing about listings it did not reach);
+  - the scrape found at least 40% of the listings the DB believes are active
+    (guards against Avito serving truncated results);
+  - the listing has not been seen for SOLD_GRACE_HOURS. Listings shift between
+    pages while a scrape is running, so one miss is not enough.
 
 Usage:
-    python refresh.py              # scrape 500 pages (default)
-    python refresh.py -p 5         # scrape 5 pages (quick test)
+    python refresh.py              # scrape the whole category
+    python refresh.py -p 5         # scrape 5 pages (quick test; never marks sold)
 """
 
-import asyncio
 import logging
 from datetime import datetime
 
 import psycopg
 
 import db
-from scraper import scrape
+from scraper import ScrapeResult, scrape
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+SOLD_GRACE_HOURS = 36       # unseen for longer than this (i.e. two daily runs) = sold
+MIN_SCRAPE_COVERAGE = 0.4   # scraped / active-in-DB ratio below which nothing is marked sold
 
 
 # ---------------------------------------------------------------------------
@@ -98,33 +104,34 @@ def patch_prices(conn: psycopg.Connection, updates: list[dict]):
     logger.info("Updated price/link for %d items.", len(updates))
 
 
-def mark_sold(conn: psycopg.Connection, ids_not_found: set[str], scraped_count: int, active_count: int) -> int:
-    """Set is_sold=True for DB items whose avito_id was NOT in the scrape.
+def mark_sold(conn: psycopg.Connection, ids_not_found: set[str], scrape_complete: bool,
+              scraped_count: int, active_count: int) -> int:
+    """Set is_sold=True for DB items that disappeared from Avito.
 
-    Safety guard: if scraped_count < 40% of active_count, the scraper likely had
-    a bad run (timeouts, Cloudflare blocks) and we must not mass-mark valid items
-    as sold. We compare against ACTIVE count only — not total — to avoid the
-    death spiral where an inflated total DB count permanently trips the guard.
-
-    Returns the number of rows newly marked sold.
+    See the module docstring for the three conditions. Returns the number of
+    rows newly marked sold.
     """
     if not ids_not_found:
         return 0
 
-    if active_count > 0 and scraped_count < 0.4 * active_count:
+    if not scrape_complete:
+        logger.warning("Scrape was partial or had failed pages — skipping mark_sold.")
+        return 0
+
+    if active_count > 0 and scraped_count < MIN_SCRAPE_COVERAGE * active_count:
         logger.warning(
-            "SAFETY GUARD: scraped %d items < 40%% of %d active DB items. "
-            "Skipping mark_sold to prevent accidental data loss.",
-            scraped_count, active_count,
+            "SAFETY GUARD: scraped %d items < %d%% of %d active DB items. Skipping mark_sold.",
+            scraped_count, MIN_SCRAPE_COVERAGE * 100, active_count,
         )
         return 0
 
     marked = conn.execute(
         "update laptops set is_sold = true, sold_at = now() "
-        "where avito_id = any(%s) and not is_sold",
-        (list(ids_not_found),),
+        "where avito_id = any(%s) and not is_sold "
+        "and last_seen_at < now() - make_interval(hours => %s)",
+        (list(ids_not_found), SOLD_GRACE_HOURS),
     ).rowcount
-    logger.info("Marked %d items as sold.", marked)
+    logger.info("Marked %d items as sold (%d unseen, the rest within the grace period).", marked, len(ids_not_found))
     return marked
 
 
@@ -149,7 +156,8 @@ def touch_seen(conn: psycopg.Connection, ids_found: set[str]) -> int:
 # ---------------------------------------------------------------------------
 # Diff logic
 # ---------------------------------------------------------------------------
-def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: list[dict]) -> dict:
+def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: list[dict],
+                 scrape_complete: bool = True) -> dict:
     """
     Compare scraped ads against DB by avito_id + content_hash.
 
@@ -158,7 +166,7 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
       2. Same ID, hash changed             → insert into new_laptops (content updated, re-parse)
       3. Same ID, same hash, price/link diff → PATCH price/link only
       4. Same ID, same hash, same price    → skip
-      5. DB ID not in scrape               → mark is_sold=True
+      5. DB ID not in scrape               → mark is_sold=True (see mark_sold for the conditions)
     """
     # Build DB index by avito_id
     db_by_id: dict[str, dict] = {}
@@ -233,7 +241,7 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
 
     insert_into_new_laptops(conn, new_items)
     patch_prices(conn, updates)
-    marked_sold = mark_sold(conn, ids_not_found, len(scraped_ads), active_count)
+    marked_sold = mark_sold(conn, ids_not_found, scrape_complete, len(scraped_ads), active_count)
     relisted = touch_seen(conn, ids_found)
 
     return {
@@ -249,19 +257,25 @@ def diff_and_act(conn: psycopg.Connection, scraped_ads: list[dict], db_items: li
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def main(max_pages: int = 500) -> dict:
+def main(max_pages: int | None = None) -> dict:
     """Scrape, diff against the DB and apply the result. Returns the run stats."""
     start = datetime.now()
 
     # 1. Scrape Avito (before opening a connection: this takes minutes)
-    scraped_ads = asyncio.run(scrape(max_pages))
-    logger.info("Scraped %d unique ads from %d pages.", len(scraped_ads), max_pages)
+    result: ScrapeResult = scrape(max_pages)
+    if not result.ads:
+        raise RuntimeError("Scrape returned no listings — Avito is blocking us or changed its page structure")
+    logger.info(
+        "Scraped %d unique ads from %d pages (%d failed, Avito lists %d).",
+        len(result.ads), result.pages_fetched, len(result.failed_pages), result.total_listed,
+    )
 
     # 2. Diff and act — one transaction, so a failure leaves the DB untouched
     with db.connect() as conn:
         with conn.transaction():
             db_items = fetch_db_items(conn)
-            stats = diff_and_act(conn, scraped_ads, db_items)
+            stats = diff_and_act(conn, result.ads, db_items, scrape_complete=result.complete)
+    stats["pages_failed"] = len(result.failed_pages)
 
     # 3. Summary
     elapsed = (datetime.now() - start).total_seconds()
@@ -274,7 +288,7 @@ def main(max_pages: int = 500) -> dict:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Avito refresh pipeline")
-    parser.add_argument("-p", "--pages", type=int, default=500,
-                        help="Number of pages to scrape (default: 500)")
+    parser.add_argument("-p", "--pages", type=int, default=None,
+                        help="Number of pages to scrape (default: whole category)")
     args = parser.parse_args()
     main(args.pages)
