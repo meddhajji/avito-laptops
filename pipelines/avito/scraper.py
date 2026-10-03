@@ -7,20 +7,28 @@ Fetches laptop listings from Avito.ma, compresses text, outputs CSV.
 Key guards applied at ingestion:
   - URL category filter: only /ordinateurs_portables/ links accepted
   - Price floor: listings under 800 DH are dropped (accessories, not laptops)
-  - content_hash: MD5 of compressed text, used by refresh.py to detect URL recycling
+  - content_hash: MD5 of the title, used by refresh.py to detect rewritten listings
+
+Pages are fetched until Avito returns an empty one, failed pages are retried
+with backoff, and the result reports whether the scrape was complete (checked
+against Avito's own listing total) so callers can decide if "not seen" really
+means "gone".
 """
 import hashlib
 import re
 import csv
 import json
+import math
 import random
-import asyncio
+import time
 import logging
-import aiohttp
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+
+import requests
 from bs4 import BeautifulSoup
-import unicodedata
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,10 +37,12 @@ logger = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 BASE_URL = "https://www.avito.ma/fr/maroc/ordinateurs_portables"
-MAX_PAGES = 500
-BATCH_SIZE = 25
-BATCH_DELAY = 2.0
+HARD_PAGE_LIMIT = 1500   # runaway guard; the category has ~700 pages
+MIN_COVERAGE = 0.9       # share of Avito's listing total we must have seen to call a scrape complete
+BATCH_SIZE = 25          # pages fetched concurrently
+BATCH_DELAY = 2.0        # seconds between batches
 REQUEST_TIMEOUT = 15
+FETCH_ATTEMPTS = 3       # per page, with exponential backoff
 OUTPUT_DIR = Path(__file__).parent / "data"
 
 USER_AGENTS = [
@@ -54,8 +64,8 @@ CSV_COLUMNS = [
 # Text compression
 # ---------------------------------------------------------------------------
 def compress_text(title: str, description: str) -> str:
-    """Join title + description, normalize to ASCII, keep only basic letters/digits/dots/spaces,
-    collapse runs of 3+ identical chars to one."""
+    """Join title + description, lowercase, strip noise and punctuation (letters of any
+    script, digits and dots are kept), collapse runs of 3+ identical chars to one."""
     text = f"{title} {description}".lower()
 
     # Strip dynamic/relative time patterns
@@ -145,15 +155,17 @@ def _extract_next_data(html: str) -> dict | None:
         return json.loads(m.group(1))
     return None
 
-def _parse_ads(data: dict) -> list[dict]:
-    """Extract raw ad dicts from the parsed JSON, applying category and price guards."""
-    ads = (
+def _ads_container(data: dict) -> dict:
+    return (
         data.get("props", {})
         .get("pageProps", {})
         .get("componentProps", {})
         .get("ads", {})
-        .get("ads", [])
-    )
+    ) or {}
+
+def _parse_ads(data: dict) -> list[dict]:
+    """Extract raw ad dicts from the parsed JSON, applying category and price guards."""
+    ads = _ads_container(data).get("ads", [])
     results = []
     for ad in ads:
         try:
@@ -218,7 +230,43 @@ def _parse_ads(data: dict) -> list[dict]:
             logger.debug("Skipped malformed ad", exc_info=True)
     return results
 
-import requests
+# ---------------------------------------------------------------------------
+# Fetching
+# ---------------------------------------------------------------------------
+@dataclass
+class ScrapeResult:
+    ads: list[dict] = field(default_factory=list)
+    total_listed: int = 0          # listings Avito says exist in the category
+    raw_seen: int = 0              # ads on fetched pages, before guards and de-duplication
+    pages_fetched: int = 0
+    failed_pages: list[int] = field(default_factory=list)
+    partial: bool = False          # True when max_pages cut the scrape short
+    reached_end: bool = False      # True when an empty page marked the end of the category
+
+    @property
+    def complete(self) -> bool:
+        """The whole category was fetched, so an unseen listing is really gone.
+
+        Besides reaching the end with no failed pages, the ads seen must add up to
+        roughly what Avito says exists: a block page that renders as an empty
+        listing would otherwise look like the end of the category.
+        """
+        return (
+            not self.partial
+            and self.reached_end
+            and not self.failed_pages
+            and self.raw_seen >= MIN_COVERAGE * self.total_listed
+        )
+
+
+@dataclass
+class _Page:
+    number: int
+    ok: bool
+    ads: list[dict] = field(default_factory=list)
+    raw_count: int = 0             # ads on the page before guards; 0 means past the last page
+    total_listed: int = 0
+
 
 _req_session: requests.Session | None = None
 
@@ -226,70 +274,111 @@ def _get_req_session() -> requests.Session:
     global _req_session
     if _req_session is None:
         _req_session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30, max_retries=2)
+        adapter = requests.adapters.HTTPAdapter(pool_connections=BATCH_SIZE, pool_maxsize=BATCH_SIZE)
         _req_session.mount("https://", adapter)
     return _req_session
 
-def _fetch_url_requests(url: str) -> str | None:
+def _fetch_html(url: str) -> str | None:
+    """GET a page, retrying on errors and non-200 responses with exponential backoff."""
     session = _get_req_session()
-    try:
-        r = session.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
-        if r.status_code == 200:
-            return r.text
-        logger.warning("HTTP %d for %s", r.status_code, url)
-    except Exception as e:
-        logger.warning("Error fetching %s: %s", url, e)
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        try:
+            r = session.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
+            if r.status_code == 200:
+                return r.text
+            logger.warning("HTTP %d for %s (attempt %d/%d)", r.status_code, url, attempt, FETCH_ATTEMPTS)
+        except requests.RequestException as e:
+            logger.warning("Error fetching %s (attempt %d/%d): %s", url, attempt, FETCH_ATTEMPTS, e)
+        if attempt < FETCH_ATTEMPTS:
+            time.sleep(2 ** attempt + random.random())
     return None
 
-async def _fetch_page(session: aiohttp.ClientSession | None, page: int) -> list[dict]:
-    url = f"{BASE_URL}?o={page}"
-    html = await asyncio.to_thread(_fetch_url_requests, url)
+def _fetch_page(number: int) -> _Page:
+    html = _fetch_html(f"{BASE_URL}?o={number}")
     if not html:
-        logger.warning("Page %d: failed to fetch HTML", page)
-        return []
-
-    data = _extract_next_data(html)
+        return _Page(number, ok=False)
+    try:
+        data = _extract_next_data(html)
+    except json.JSONDecodeError:
+        data = None
     if not data:
-        logger.warning("Page %d: no __NEXT_DATA__", page)
-        return []
-    ads = _parse_ads(data)
-    logger.info("Page %d: %d ads", page, len(ads))
-    return ads
+        logger.warning("Page %d: no __NEXT_DATA__", number)
+        return _Page(number, ok=False)
 
-async def scrape(max_pages: int = MAX_PAGES) -> list[dict]:
-    """Scrape `max_pages` pages and return de-duplicated listings."""
-    all_ads: list[dict] = []
+    container = _ads_container(data)
+    return _Page(
+        number,
+        ok=True,
+        ads=_parse_ads(data),
+        raw_count=len(container.get("ads") or []),
+        total_listed=int(container.get("totalListingAds") or 0),
+    )
+
+def scrape(max_pages: int | None = None) -> ScrapeResult:
+    """Scrape the laptop category and return de-duplicated listings.
+
+    With max_pages=None the whole category is scraped, stopping at the first
+    empty page. With a number, only that many pages are fetched and the result
+    is marked partial.
+    """
+    result = ScrapeResult(partial=max_pages is not None)
     seen: set[str] = set()
 
-    connector = aiohttp.TCPConnector(limit=50)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        for batch_start in range(1, max_pages + 1, BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, max_pages + 1)
-            tasks = [_fetch_page(session, p) for p in range(batch_start, batch_end)]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+    def collect(page: _Page):
+        result.pages_fetched += 1
+        result.raw_seen += page.raw_count
+        for ad in page.ads:
+            key = ad["avito_id"] or ad["link"]
+            if key and key not in seen:
+                seen.add(key)
+                result.ads.append(ad)
 
-            for result in results:
-                if isinstance(result, list):
-                    for ad in result:
-                        key = ad["link"] or ad["avito_id"]
-                        if key and key not in seen:
-                            seen.add(key)
-                            all_ads.append(ad)
+    first = _fetch_page(1)
+    if not first.ok or first.raw_count == 0:
+        logger.error("Page 1 could not be scraped — Avito is blocking us or changed its page structure.")
+        result.failed_pages.append(1)
+        return result
+    collect(first)
+    result.total_listed = first.total_listed
 
-            done = min(batch_end - 1, max_pages)
-            logger.info("Progress: %d/%d pages | %d unique ads", done, max_pages, len(all_ads))
+    last_page = min(max_pages or HARD_PAGE_LIMIT, HARD_PAGE_LIMIT)
+    expected_pages = math.ceil(first.total_listed / max(first.raw_count, 1))
+    logger.info("Avito lists %d ads (about %d pages)", first.total_listed, expected_pages)
 
-            if batch_end <= max_pages:
-                await asyncio.sleep(BATCH_DELAY)
+    with ThreadPoolExecutor(max_workers=BATCH_SIZE) as pool:
+        for batch_start in range(2, last_page + 1, BATCH_SIZE):
+            numbers = range(batch_start, min(batch_start + BATCH_SIZE, last_page + 1))
+            for page in pool.map(_fetch_page, numbers):
+                if not page.ok:
+                    result.failed_pages.append(page.number)
+                elif page.raw_count == 0:
+                    result.reached_end = True
+                else:
+                    collect(page)
 
-    logger.info("Scraping complete: %d unique ads (category filter active)", len(all_ads))
-    if len(all_ads) < 100:
-        logger.warning(
-            "Very few ads collected (%d) — verify /ordinateurs_portables/ URL filter is still valid. "
-            "If Avito changed their URL structure, this filter is silently dropping everything.",
-            len(all_ads),
-        )
-    return all_ads
+            logger.info("Progress: page %d of ~%d | %d unique ads", numbers[-1], max_pages or expected_pages, len(result.ads))
+            if result.reached_end or numbers[-1] >= last_page:
+                break
+            time.sleep(BATCH_DELAY)
+
+        # One more pass over pages that failed all their attempts
+        if result.failed_pages:
+            logger.info("Retrying %d failed pages...", len(result.failed_pages))
+            time.sleep(BATCH_DELAY * 5)
+            still_failed = []
+            for page in pool.map(_fetch_page, result.failed_pages):
+                if page.ok:
+                    collect(page)
+                else:
+                    still_failed.append(page.number)
+            result.failed_pages = still_failed
+
+    logger.info(
+        "Scraping finished: %d unique ads from %d pages, %d pages failed (%s)",
+        len(result.ads), result.pages_fetched, len(result.failed_pages),
+        "complete" if result.complete else "incomplete",
+    )
+    return result
 
 # ---------------------------------------------------------------------------
 # CSV output
@@ -313,16 +402,16 @@ def save_csv(ads: list[dict], path: Path | None = None) -> Path:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def main(max_pages: int = MAX_PAGES):
+def main(max_pages: int | None = None):
     start = datetime.now()
-    ads = asyncio.run(scrape(max_pages))
-    path = save_csv(ads)
+    result = scrape(max_pages)
+    path = save_csv(result.ads)
     elapsed = (datetime.now() - start).total_seconds()
-    print(f"\nDone: {len(ads)} laptops saved to {path} in {elapsed:.1f}s")
+    print(f"\nDone: {len(result.ads)} listings saved to {path} in {elapsed:.1f}s")
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Avito Laptop Scraper")
-    parser.add_argument("-p", "--pages", type=int, default=MAX_PAGES, help="Number of pages to scrape (default: 500)")
+    parser.add_argument("-p", "--pages", type=int, default=None, help="Number of pages to scrape (default: whole category)")
     args = parser.parse_args()
     main(args.pages)
