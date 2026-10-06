@@ -99,12 +99,12 @@ _RESULTS = TypeAdapter(list[ListingResult])
 SYSTEM_PROMPT = """You are a data extraction pipeline for laptop listings from a Moroccan classifieds site (Avito.ma).
 
 INPUT: A JSON array. Each element has exactly two fields:
-  "job_id": a string identifier — copy it unchanged to your output
+  "job_id": a string identifier: copy it unchanged to your output
   "text": the raw listing text (title + description, lowercased, may mix French, Arabic and Darija)
 
 OUTPUT: exactly one result per input element (in any order), with job_id, is_laptop and specs.
 
-FILTER — set is_laptop=false for ALL of the following. Be strict:
+FILTER: set is_laptop=false for ALL of the following. Be strict:
 - Laptop bags, sleeves, backpacks, cases, pouches
 - Laptop stands, mounts, cooling pads, risers, supports
 - External screens or monitors sold alone
@@ -255,7 +255,7 @@ def parse_batch_gemini(client: genai.Client, items: list[dict]) -> list[dict]:
                 if overloads > MAX_OVERLOAD_RETRIES:
                     logger.error("Still rate-limited/overloaded after %d retries. Skipping batch.", MAX_OVERLOAD_RETRIES)
                     return []
-                logger.warning("Gemini %s — sleeping %ds (retry %d/%d)", e.code, backoff, overloads, MAX_OVERLOAD_RETRIES)
+                logger.warning("Gemini %s: sleeping %ds (retry %d/%d)", e.code, backoff, overloads, MAX_OVERLOAD_RETRIES)
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 240)
             else:

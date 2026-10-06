@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-verify.py — Spot-checks random active laptop rows by fetching their live Avito URLs.
+verify.py: Spot-checks random active laptop rows by fetching their live Avito URLs.
 
 For each sampled row, fetches the live page and checks whether tokens from the
 stored description appear on the page. If < 2 tokens match, the row is flagged
@@ -40,7 +40,7 @@ def check_row(row: dict) -> tuple[bool | None, int | str]:
 
     Returns:
         (True, status_code)  → page matches stored data   (OK)
-        (False, status_code) → page does not match        (BAD — likely corrupted)
+        (False, status_code) → page does not match        (BAD: likely corrupted)
         (None, error_str)    → request failed              (ERROR)
     """
     try:
@@ -57,7 +57,7 @@ def check_row(row: dict) -> tuple[bool | None, int | str]:
         tokens = [t for t in stored.split() if len(t) > 3][:8]  # first 8 meaningful tokens
 
         if not tokens:
-            # No description stored — fall back to checking brand + model
+            # No description stored: fall back to checking brand + model
             brand = (row.get("brand") or "").lower()
             cpu = (row.get("cpu") or "").lower()
             hits = sum(1 for t in [brand, cpu] if t and t in page_text)
@@ -118,7 +118,7 @@ def main():
     elif bad == 0:
         print("\nAll checked rows look correct.")
     else:
-        print(f"\n{bad} corrupted row(s) detected — acceptable if < 5% of sample.")
+        print(f"\n{bad} corrupted row(s) detected: acceptable if < 5% of sample.")
 
 
 if __name__ == "__main__":

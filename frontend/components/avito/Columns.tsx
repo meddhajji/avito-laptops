@@ -62,8 +62,9 @@ export const ALL_COLUMNS: ColDef[] = [
     { key: "has_delivery", label: "Delivery", defaultOn: false, width: "w-[50px]", render: (l) => (l.has_delivery ? "✓" : "") },
     { key: "status", label: "Recency", defaultOn: false, width: "w-[70px]", render: (l) => {
         if (l.is_sold) return <Badge variant="destructive" className="text-[10px] uppercase font-bold tracking-wider opacity-80 py-0 leading-tight">Sold</Badge>;
-        const created = new Date(l.created_at);
-        const hoursAgo = (Date.now() - created.getTime()) / (1000 * 60 * 60);
+        // When the seller posted it, not when the pipeline first stored it
+        const listed = new Date(l.listed_at ?? l.created_at);
+        const hoursAgo = (Date.now() - listed.getTime()) / (1000 * 60 * 60);
         if (hoursAgo < 48) return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider py-0 leading-tight">New</Badge>;
         return null;
     }},

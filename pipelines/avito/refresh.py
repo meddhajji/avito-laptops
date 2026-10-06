@@ -120,7 +120,7 @@ def mark_sold(conn: psycopg.Connection, ids_not_found: set[str], scrape_complete
         return 0
 
     if not scrape_complete:
-        logger.warning("Scrape was partial or had failed pages — skipping mark_sold.")
+        logger.warning("Scrape was partial or had failed pages: skipping mark_sold.")
         return 0
 
     if active_count > 0 and scraped_count < MIN_SCRAPE_COVERAGE * active_count:
@@ -275,18 +275,19 @@ def main(max_pages: int | None = None) -> dict:
     # 1. Scrape Avito (before opening a connection: this takes minutes)
     result: ScrapeResult = scrape(max_pages)
     if not result.ads:
-        raise RuntimeError("Scrape returned no listings — Avito is blocking us or changed its page structure")
+        raise RuntimeError("Scrape returned no listings: Avito is blocking us or changed its page structure")
     logger.info(
         "Scraped %d unique ads from %d pages (%d failed, Avito lists %d).",
         len(result.ads), result.pages_fetched, len(result.failed_pages), result.total_listed,
     )
 
-    # 2. Diff and act — one transaction, so a failure leaves the DB untouched
+    # 2. Diff and act: one transaction, so a failure leaves the DB untouched
     with db.connect() as conn:
         with conn.transaction():
             db_items = fetch_db_items(conn)
             stats = diff_and_act(conn, result.ads, db_items, scrape_complete=result.complete)
     stats["pages_failed"] = len(result.failed_pages)
+    stats["complete"] = result.complete
 
     # 3. Summary
     elapsed = (datetime.now() - start).total_seconds()

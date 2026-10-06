@@ -16,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 // Modularized components
-import { PipelineStats, ScraperInfo } from "@/components/avito/PipelineInfo";
+import { PipelineStats } from "@/components/avito/PipelineInfo";
 import { FilterDialog } from "@/components/avito/FilterDialog";
 import { LaptopTable } from "@/components/avito/LaptopTable";
 import { Pagination } from "@/components/avito/Pagination";
@@ -113,20 +113,25 @@ export default function AvitoDashboard({
     // Local state for interactive UI
     const [filterOpen, setFilterOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
-    const [aboutOpen, setAboutOpen] = useState(false);
     const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
     const [draftFilters, setDraftFilters] = useState<Filters>(parseFiltersFromURL(new URLSearchParams(searchParams.toString())));
     const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
     const [isPending, startTransition] = useTransition();
 
-    // Sync local search input and draft filters if URL changes externally
-    useEffect(() => {
+    // Keep the search box and draft filters in step with the URL (back/forward, links).
+    // Adjusting state during render is React's recommended alternative to an effect here.
+    const paramsString = searchParams.toString();
+    const [syncedParams, setSyncedParams] = useState(paramsString);
+    if (syncedParams !== paramsString) {
+        setSyncedParams(paramsString);
         setSearchInput(searchParams.get("search") || "");
-        setDraftFilters(parseFiltersFromURL(new URLSearchParams(searchParams.toString())));
-        
-        // Always save current state, even if empty, so "clearing" persists across navigation
-        sessionStorage.setItem("avito_dashboard_params", searchParams.toString());
-    }, [searchParams]);
+        setDraftFilters(parseFiltersFromURL(new URLSearchParams(paramsString)));
+    }
+
+    // Always save current state, even if empty, so "clearing" persists across navigation
+    useEffect(() => {
+        sessionStorage.setItem("avito_dashboard_params", paramsString);
+    }, [paramsString]);
 
     // Restore state on mount if no params are present
     useEffect(() => {
@@ -260,14 +265,6 @@ export default function AvitoDashboard({
                             } />
                             <PipelineStats lastUpdate={lastUpdate} total={total} />
                         </Dialog>
-                        <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
-                            <DialogTrigger id="avito-how-it-works-trigger" render={
-                                <button className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md hover:border-black/10 dark:hover:border-white/20 px-2 py-0.5 rounded text-xs font-medium border border-black/5 dark:border-white/5 cursor-pointer shadow-sm">
-                                    About
-                                </button>
-                            } />
-                            <ScraperInfo />
-                        </Dialog>
                     </div>
                 </div>
 
@@ -371,7 +368,7 @@ export default function AvitoDashboard({
                     <p>Hardware specs are extracted by AI.</p>
                     {lastUpdate && (
                         <p>
-                            Last update {new Date(lastUpdate.created_at).toLocaleDateString("en-GB")}
+                            Data refreshed {new Date(lastUpdate.created_at).toLocaleDateString("en-GB", { timeZone: "UTC" })}
                         </p>
                     )}
                 </div>

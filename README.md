@@ -2,9 +2,9 @@
 
 A data pipeline and web app that turn messy laptop classifieds from [Avito.ma](https://www.avito.ma) into a structured, searchable market database, with an AI assistant on top.
 
-- **Pipeline** — scrapes listings daily, uses an LLM to extract hardware specs from free-text seller descriptions, scores each laptop against CPU benchmarks, and tracks price changes and sold listings over time.
-- **Dashboard** (`/avito`) — full-text search, filters and sorting over the processed listings.
-- **AvitoPT** (`/avitopt`) — a chat assistant that answers questions like *"cheapest 3 ThinkPads in Casablanca"* by querying the database through tool calls.
+- **Pipeline**: scrapes listings daily, uses an LLM to extract hardware specs from free-text seller descriptions, scores each laptop against CPU benchmarks, and tracks price changes and sold listings over time.
+- **Dashboard** (`/avito`): full-text search, filters and sorting over the processed listings.
+- **AvitoPT** (`/avitopt`): a chat assistant that answers questions like *"cheapest 3 ThinkPads in Casablanca"* by querying the database through tool calls.
 
 ## Architecture
 

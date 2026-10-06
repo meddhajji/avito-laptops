@@ -61,11 +61,11 @@ Shops often post the same laptop several times. Active listings with the same br
 
 The pipeline connects through `DATABASE_URL`. The schema is defined in `db/migrations` at the repository root and applied with `python db.py migrate` (the full pipeline also applies pending migrations on start).
 
-- `laptops` — main table, upserted by Avito ID.
-- `new_laptops` — staging queue, emptied as listings are extracted.
-- `price_history` — every price a listing has had (written by a trigger).
-- `rejected_listings` — listings already rejected as non-laptops; refresh skips them unless their title changes.
-- `pipeline_runs` — one row per run with its status and counters.
+- `laptops`: main table, upserted by Avito ID.
+- `new_laptops`: staging queue, emptied as listings are extracted.
+- `price_history`: every price a listing has had (written by a trigger).
+- `rejected_listings`: listings already rejected as non-laptops; refresh skips them unless their title changes.
+- `pipeline_runs`: one row per run with its status and counters.
 
 ## Tests
 

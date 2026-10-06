@@ -15,7 +15,7 @@ look new to the next refresh and be sent to the LLM again, every day.
 Flags are recomputed from scratch on each run, so a listing stops being a
 duplicate as soon as its twin is sold or changes price.
 
-Only active (is_sold=False) rows are considered — sold rows are historical
+Only active (is_sold=False) rows are considered: sold rows are historical
 records and different sold listings with the same specs are all valid data points.
 
 Usage (standalone):
@@ -68,7 +68,7 @@ def main() -> int:
     with db.connect() as conn:
         flagged = flag_duplicates(conn)
 
-    logger.info("Deduplication complete — %d active listings flagged as duplicates.", flagged)
+    logger.info("Deduplication complete: %d active listings flagged as duplicates.", flagged)
     return flagged
 
 

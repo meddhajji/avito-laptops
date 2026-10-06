@@ -174,7 +174,7 @@ def _parse_ads(data: dict) -> list[dict]:
             if link and not link.startswith("http"):
                 link = f"https://www.avito.ma{link}"
 
-            # Guard 1: URL category filter — only laptop category URLs pass.
+            # Guard 1: URL category filter: only laptop category URLs pass.
             # Every individual laptop listing on Avito contains /ordinateurs_portables/
             # in its path. Accessories, bags, stands, etc. live in different paths.
             if not link or "/ordinateurs_portables/" not in link:
@@ -185,12 +185,12 @@ def _parse_ads(data: dict) -> list[dict]:
             price_data = ad.get("price", {})
             price = float(price_data.get("value", 0)) if isinstance(price_data, dict) else float(price_data or 0)
 
-            # Guard 2: Price ceiling — overpriced listings are not real laptops
+            # Guard 2: Price ceiling: overpriced listings are not real laptops
             if price > 100000:
                 logger.debug("Skipped overpriced ad (price: %d): %s", price, link)
                 continue
 
-            # Guard 3: Price floor — the cheapest operational laptop on avito.ma is ~900 DH.
+            # Guard 3: Price floor: the cheapest operational laptop on avito.ma is ~900 DH.
             # Sub-800 DH items are accessories, parts, repair services, or PC stands.
             if 0 < price < 800:
                 logger.debug("Skipped sub-800 DH listing (price: %d): %s", price, link)
@@ -211,7 +211,7 @@ def _parse_ads(data: dict) -> list[dict]:
 
             compressed = compress_text(title, desc)
 
-            # Guard 4: content_hash — MD5 of the title only.
+            # Guard 4: content_hash: MD5 of the title only.
             # Description is unstable (view counts, timestamps) and causes false re-parses.
             content_hash = hashlib.md5(title.lower().encode("utf-8")).hexdigest()
 
@@ -335,7 +335,7 @@ def scrape(max_pages: int | None = None) -> ScrapeResult:
 
     first = _fetch_page(1)
     if not first.ok or first.raw_count == 0:
-        logger.error("Page 1 could not be scraped — Avito is blocking us or changed its page structure.")
+        logger.error("Page 1 could not be scraped: Avito is blocking us or changed its page structure.")
         result.failed_pages.append(1)
         return result
     collect(first)

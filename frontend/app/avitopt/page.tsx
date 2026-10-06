@@ -10,8 +10,6 @@ import { LaptopTable } from "@/components/avito/LaptopTable";
 import { ALL_COLUMNS } from "@/components/avito/Columns";
 import type { Laptop } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
-import { AvitoPtInfo } from "@/components/avitopt/AvitoPtInfo";
 
 type LaptopFilters = {
   search_terms?: string[];
@@ -61,7 +59,7 @@ const LANE_CLASS = "mx-auto w-full max-w-[900px] px-4 sm:px-6";
 const CONTENT_LANE_CLASS = "mx-auto w-full max-w-[900px] pl-5 pr-3 sm:pl-7 sm:pr-5";
 
 // The server gets the new question, the last few questions and the previous
-// search's filters — not the transcript, which it would have no reason to trust.
+// search's filters: not the transcript, which it would have no reason to trust.
 const transport = new DefaultChatTransport({
   api: "/api/chat",
   prepareSendMessagesRequest: ({ body }) => ({ body: body ?? {} }),
@@ -218,13 +216,13 @@ const PHASE_LABELS: Record<Exclude<StreamPhase, "idle">, string> = {
   preparing: "Preparing answer...",
 };
 
-/** Pure function — derives the current loading phase from SDK status + last message parts. */
+/** Pure function: derives the current loading phase from SDK status + last message parts. */
 const getStreamPhase = (status: string, messages: ChatMessage[]): StreamPhase => {
   if (status !== "submitted" && status !== "streaming") return "idle";
   const lastMsg = messages[messages.length - 1];
   // Still waiting for the assistant's first chunk
   if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.parts?.length) return "reading";
-  // Text has started streaming — no indicator needed
+  // Text has started streaming: no indicator needed
   if (getTextContent(lastMsg).length > 0) return "idle";
   // Results are on screen, the written summary is on its way
   return getSearchPart(lastMsg) ? "preparing" : "reading";
@@ -322,7 +320,7 @@ const MessageItem = React.memo(function MessageItem({
   return (
     <div className="w-full space-y-4">
 
-      {/* Table first — locks layout before text streams in, prevents end-of-stream jump */}
+      {/* Table first: locks layout before text streams in, prevents end-of-stream jump */}
       {showTable && (
         <ResultPanel laptops={laptops} filters={filters} stats={stats} visibleCols={visibleCols} toggleCol={toggleCol} />
       )}
@@ -404,7 +402,7 @@ export default function AvitoPTPage() {
     setIsNearBottom(true);
   }, []);
 
-  // Scroll to bottom only on new user messages and when stream fully settles —
+  // Scroll to bottom only on new user messages and when stream fully settles , 
   // NOT on every streaming tick, to avoid fighting native scroll anchoring mid-stream.
   const messageCountRef = useRef(0);
   useEffect(() => {
@@ -504,16 +502,6 @@ export default function AvitoPTPage() {
                 <h1 className="text-2xl font-black tracking-tight drop-shadow-md">AvitoPT</h1>
               </div>
 
-              <div className="flex items-center gap-3">
-                <Dialog>
-                  <DialogTrigger id="avitopt-how-it-works-trigger" render={
-                    <button className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md hover:border-black/10 dark:hover:border-white/20 px-2 py-0.5 rounded text-xs font-medium border border-black/5 dark:border-white/5 cursor-pointer shadow-sm">
-                      About
-                    </button>
-                  } />
-                  <AvitoPtInfo />
-                </Dialog>
-              </div>
             </div>
           </div>
         </div>

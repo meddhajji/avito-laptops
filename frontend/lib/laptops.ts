@@ -139,11 +139,14 @@ export async function fetchLaptops(params: LaptopSearchParams): Promise<{ laptop
     return { laptops, total: total as number };
 }
 
-/** Finish time of the most recent successful pipeline run. */
+/**
+ * Finish time of the most recent successful run that covered the whole category.
+ * Trial runs on a few pages and failed runs do not count as a refresh.
+ */
 export async function fetchLastUpdate(): Promise<{ created_at: string } | null> {
     const [row] = await db()`
         SELECT finished_at FROM pipeline_runs
-        WHERE status = 'success'
+        WHERE status = 'success' AND complete
         ORDER BY finished_at DESC
         LIMIT 1
     `;

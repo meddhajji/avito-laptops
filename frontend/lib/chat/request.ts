@@ -17,7 +17,7 @@ const fail = (status: number, error: string): ParseResult => ({ ok: false, statu
 
 /**
  * Validates the raw request body. The browser sends only the new question, the
- * last few questions and the filters of the previous search — never a full
+ * last few questions and the filters of the previous search: never a full
  * transcript, so a client cannot inject fake assistant or tool messages.
  */
 export function parseChatRequest(rawBody: string): ParseResult {
