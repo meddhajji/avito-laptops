@@ -1,4 +1,6 @@
-# Avito Laptops
+# Avito Laptop Tracker
+
+[![CI](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml)
 
 A data pipeline and web app that turn messy laptop classifieds from [Avito.ma](https://www.avito.ma) into a structured, searchable market database, with an AI assistant on top.
 
@@ -30,7 +32,7 @@ Both the pipeline and the web app talk to the database through a single `DATABAS
 ```text
 db/
   migrations/          SQL schema, applied in order by `python db.py migrate`
-  seed/                Sample of ~600 parsed listings for local demos
+  seed/                Sample of 3,000 parsed listings for local demos
 pipelines/avito/
   pipeline.py          Orchestrator: refresh → parse → dedup → pricing, recorded in pipeline_runs
   scraper.py           Fetches listing pages and extracts ads
@@ -46,7 +48,8 @@ frontend/
   app/avitopt/         Chat assistant UI
   app/api/chat/        Chat endpoint (tool-calling over the laptops table)
   lib/                 Database client and query builders
-.github/workflows/     Daily pipeline run
+compose.yaml           One-command local stack (database, sample data, web app)
+.github/workflows/     CI on every push, and the daily pipeline run
 ```
 
 ## Data model
@@ -62,7 +65,22 @@ frontend/
 
 The schema lives in [`db/migrations`](db/migrations).
 
-## Running locally
+## Try it with Docker
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:3000. This starts PostgreSQL, applies the migrations, loads a sample of 3,000 real listings (with duplicates flagged and fair prices estimated) and serves the web app. No API key is needed to browse.
+
+Two optional keys, set in a `.env` file next to `compose.yaml` or in your shell:
+
+| Variable | Enables |
+| --- | --- |
+| `GROQ_API_KEY` | the chat assistant |
+| `GEMINI_API_KEY` | running the pipeline against Avito: `docker compose run --rm pipeline python pipeline.py -p 5` |
+
+## Running without Docker
 
 You need a PostgreSQL database and its connection string.
 
@@ -108,7 +126,17 @@ TEST_DATABASE_URL=postgresql://... pytest
 
 Each database test runs in its own throwaway schema; the scraper and LLM are replaced by fakes, so no network or API key is needed. Without `TEST_DATABASE_URL`, database tests are skipped.
 
+The web app has its own unit tests (filter sanitizing, query building, request validation, rate limits):
+
+```bash
+cd frontend
+npm test
+```
+
 ## Automation
+
+[`ci.yml`](.github/workflows/ci.yml) runs on every push: the pipeline tests against a real PostgreSQL, the frontend lint, type-check, unit tests and build, and a smoke test that starts the whole Docker Compose stack and checks the dashboard serves the seeded listings.
+
 
 [`avito-refresh.yml`](.github/workflows/avito-refresh.yml) runs the pipeline daily at 01:00 UTC, and on demand with an optional page limit. It needs two repository secrets: `DATABASE_URL` and `GEMINI_API_KEY`. The run exits non-zero if any step fails, and every run is logged in `pipeline_runs`.
 

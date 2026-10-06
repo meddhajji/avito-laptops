@@ -54,6 +54,7 @@ export const LaptopTable = React.memo(function LaptopTable({
                                 key={c.key}
                                 className={cn(
                                     c.width,
+                                    c.cellClassName,
                                     "text-[11px] font-black uppercase tracking-wider text-muted-foreground/70",
                                     idx === 0 && "sticky left-0 bg-background z-50 border-r border-white/5 shadow-[4px_0_8px_rgba(0,0,0,0.2)]",
                                     !isLocked && c.key === "price" && "cursor-pointer group select-none"
@@ -144,6 +145,7 @@ export const LaptopTable = React.memo(function LaptopTable({
                                     <TableCell
                                         key={c.key}
                                         className={cn(
+                                            c.cellClassName,
                                             compact && "px-2 py-1.5",
                                             idx === 0 && "sticky left-0 bg-background z-20 border-r border-white/5 shadow-[4px_0_8px_rgba(0,0,0,0.2)]",
                                         )}

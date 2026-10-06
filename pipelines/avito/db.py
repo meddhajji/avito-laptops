@@ -130,7 +130,16 @@ def _num(val: str):
 
 
 def seed(conn: psycopg.Connection) -> int:
-    """Load the sample CSV into laptops. Safe to re-run (upserts by avito_id)."""
+    """Load the sample CSV, then flag duplicates and estimate fair prices as a real run would.
+
+    Does nothing if the table already has listings, so it is safe to run on every start.
+    """
+    import dedup
+    import pricing
+
+    if conn.execute("select exists (select 1 from laptops) as seeded").fetchone()["seeded"]:
+        return 0
+
     numeric = {"price", "ram", "storage", "ssd", "gpu_vram", "screen_size",
                "refresh_rate", "new", "touchscreen", "score"}
     booleans = {"is_shop", "has_delivery", "is_sold"}
@@ -152,8 +161,12 @@ def seed(conn: psycopg.Connection) -> int:
             rows.append(row)
 
     upsert_laptops(conn, rows)
+    stats = {"scraped": len(rows), "new_items": len(rows), "complete": True}
+    stats["duplicates"] = dedup.flag_duplicates(conn)
+    stats.update(pricing.update_fair_prices(conn))
+
     run_id = start_run(conn)
-    finish_run(conn, run_id, "success", {"scraped": len(rows), "new_items": len(rows)})
+    finish_run(conn, run_id, "success", stats)
     return len(rows)
 
 
@@ -170,4 +183,5 @@ if __name__ == "__main__":
             names = migrate(connection)
             print(f"Applied {len(names)} migration(s): {', '.join(names) or 'none pending'}")
         else:
-            print(f"Seeded {seed(connection)} laptops from {SEED_CSV.name}")
+            count = seed(connection)
+            print(f"Seeded {count} laptops from {SEED_CSV.name}" if count else "Database already has listings; nothing seeded")

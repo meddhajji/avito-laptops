@@ -491,7 +491,7 @@ export default function AvitoPTPage() {
         className="h-full overflow-y-scroll overflow-x-hidden custom-scrollbar"
       >
         <div className="sticky top-0 z-30 pointer-events-none">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-background to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-background via-background/95 to-transparent" />
           <div className="relative mx-auto max-w-[1100px] px-6 pt-3 pb-3 pointer-events-auto">
             <div className="flex items-baseline justify-between relative z-10">
               <h1 className="text-2xl font-black tracking-tight drop-shadow-md">AvitoPT</h1>

@@ -9,6 +9,8 @@ export interface ColDef {
     defaultOn: boolean;
     align?: "right" | "center";
     width?: string;
+    /** Extra classes for both the header and body cells, e.g. to hide the column on phones. */
+    cellClassName?: string;
     render: (l: Laptop) => React.ReactNode;
 }
 
@@ -71,9 +73,14 @@ const RENDER_PRICE = (l: Laptop) => {
 };
 
 export const ALL_COLUMNS: ColDef[] = [
-    { key: "score", label: "Score", defaultOn: true, width: "w-[65px]", render: SCORE_BADGE },
-    { key: "brand", label: "Brand", defaultOn: true, width: "w-[80px]", render: (l) => <span className="font-medium">{l.brand || ""}</span> },
-    { key: "model", label: "Model", defaultOn: true, width: "w-[160px]", render: (l) => <span className="truncate block">{l.model || ""}</span> },
+    { key: "score", label: "Score", defaultOn: true, width: "w-[65px]", cellClassName: "hidden sm:table-cell", render: SCORE_BADGE },
+    { key: "brand", label: "Brand", defaultOn: true, width: "w-[80px]", cellClassName: "hidden sm:table-cell", render: (l) => <span className="font-medium">{l.brand || ""}</span> },
+    { key: "model", label: "Model", defaultOn: true, width: "w-[160px]", render: (l) => (
+        <span className="block truncate max-w-[42vw] sm:max-w-none">
+            <span className="sm:hidden font-medium">{l.brand ? `${l.brand} ` : ""}</span>
+            {l.model || ""}
+        </span>
+    ) },
     { key: "price", label: "Price", defaultOn: true, width: "w-[150px]", render: RENDER_PRICE },
     { key: "cpu", label: "CPU", defaultOn: true, width: "w-[120px]", render: (l) => <span className="truncate block">{l.cpu || ""}</span> },
     { key: "ram", label: "RAM", defaultOn: true, width: "w-[80px]", render: (l) => (l.ram != null ? `${l.ram} GB` : "") },

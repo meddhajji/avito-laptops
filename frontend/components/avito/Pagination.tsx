@@ -11,8 +11,8 @@ export function Pagination({ page, totalPages, setPage }: Props) {
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-center sm:justify-between">
+            <p className="hidden sm:block text-sm text-muted-foreground">
                 Page {page + 1} of {totalPages}
             </p>
             <div className="flex gap-1">

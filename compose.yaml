@@ -1,0 +1,67 @@
+# Run the whole project locally:
+#
+#   docker compose up --build
+#
+# then open http://localhost:3000. The database is created, migrated and loaded
+# with a sample of 3,000 real listings; no API key is needed to browse them.
+#
+# Optional keys, read from a .env file next to this one or from your shell:
+#   GROQ_API_KEY     enables the chat assistant
+#   GEMINI_API_KEY   lets you run the pipeline against Avito:
+#                      docker compose run --rm pipeline python pipeline.py -p 5
+
+x-database-url: &database-url postgresql://avito:avito@db:5432/avito?sslmode=disable
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: avito
+      POSTGRES_PASSWORD: avito
+      POSTGRES_DB: avito
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avito -d avito"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: applies migrations and loads the sample data on first start
+  setup:
+    build:
+      context: .
+      dockerfile: pipelines/avito/Dockerfile
+    command: sh -c "python db.py migrate && python db.py seed"
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    environment:
+      DATABASE_URL: *database-url
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+  # On demand only (not started by `up`)
+  pipeline:
+    profiles: ["pipeline"]
+    build:
+      context: .
+      dockerfile: pipelines/avito/Dockerfile
+    environment:
+      DATABASE_URL: *database-url
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:

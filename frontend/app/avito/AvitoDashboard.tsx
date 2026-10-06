@@ -240,7 +240,7 @@ export default function AvitoDashboard({
         <div className="h-full overflow-y-auto custom-scrollbar border-none outline-none">
             <div className="mx-auto max-w-[1100px] px-6 pt-3 pb-8">
                 {/* Header Row */}
-                <div className="flex items-baseline justify-between mb-[14px]">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 mb-[14px]">
                 <div 
                     onClick={() => {
                         setSearchInput("");
@@ -260,8 +260,8 @@ export default function AvitoDashboard({
                 </div>
 
                 {/* search + sort + filter bar */}
-                <div className="flex gap-2 items-center w-full">
-                    <form onSubmit={handleSearch} className="flex-1">
+                <div className="flex flex-wrap gap-2 items-center w-full">
+                    <form onSubmit={handleSearch} className="basis-full sm:basis-0 sm:flex-1">
                         <Input
                             placeholder="Search laptops..."
                             value={searchInput}
@@ -269,7 +269,7 @@ export default function AvitoDashboard({
                             className="w-full"
                         />
                     </form>
-                    <Button variant="outline" onClick={handleSearch} className="w-[87px] shrink-0 justify-center">
+                    <Button variant="outline" onClick={handleSearch} className="hidden sm:inline-flex w-[87px] shrink-0 justify-center">
                         Search
                     </Button>
                     <Select value={sortBy} onValueChange={(v) => {
@@ -280,7 +280,7 @@ export default function AvitoDashboard({
                         params.set("page", "0");
                         updateURL(params);
                     }}>
-                        <SelectTrigger className="w-[87px] shrink-0 capitalize">
+                        <SelectTrigger className="flex-1 sm:flex-none sm:w-[87px] shrink-0 capitalize">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent
@@ -302,7 +302,7 @@ export default function AvitoDashboard({
                         <DialogTrigger
                             id="avito-filters-trigger"
                             render={
-                                <Button variant="outline" className="w-[87px] shrink-0 justify-center">
+                                <Button variant="outline" className="flex-1 sm:flex-none sm:w-[87px] shrink-0 justify-center">
                                     Filters
                                     {activeFilterCount > 0 && (
                                         <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px] text-emerald-500 leading-none">
