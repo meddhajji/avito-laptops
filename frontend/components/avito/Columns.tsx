@@ -74,6 +74,7 @@ export const ALL_COLUMNS: ColDef[] = [
     { key: "score", label: "Score", defaultOn: true, width: "w-[65px]", render: SCORE_BADGE },
     { key: "brand", label: "Brand", defaultOn: true, width: "w-[80px]", render: (l) => <span className="font-medium">{l.brand || ""}</span> },
     { key: "model", label: "Model", defaultOn: true, width: "w-[160px]", render: (l) => <span className="truncate block">{l.model || ""}</span> },
+    { key: "price", label: "Price", defaultOn: true, width: "w-[150px]", render: RENDER_PRICE },
     { key: "cpu", label: "CPU", defaultOn: true, width: "w-[120px]", render: (l) => <span className="truncate block">{l.cpu || ""}</span> },
     { key: "ram", label: "RAM", defaultOn: true, width: "w-[80px]", render: (l) => (l.ram != null ? `${l.ram} GB` : "") },
     { key: "storage", label: "Storage", defaultOn: true, width: "w-[100px]", render: (l) => {
@@ -82,7 +83,6 @@ export const ALL_COLUMNS: ColDef[] = [
         return `${l.storage} GB`;
     }},
     { key: "gpu", label: "GPU", defaultOn: true, width: "w-[130px]", render: (l) => <span className="truncate block">{l.gpu || ""}</span> },
-    { key: "price", label: "Price", defaultOn: true, width: "w-[150px]", render: RENDER_PRICE },
     { key: "city", label: "City", defaultOn: true, width: "w-[120px]", render: (l) => <span className="truncate block text-muted-foreground">{l.city || ""}</span> },
     { key: "new", label: "Cond.", defaultOn: true, width: "w-[80px]", render: (l) => l.new === 1 ? <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-tight">New</Badge> : (l.new === 0 ? <span className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-tight">Used</span> : "") },
     { key: "gpu_type", label: "GPU type", defaultOn: false, render: (l) => l.gpu_type || "" },
