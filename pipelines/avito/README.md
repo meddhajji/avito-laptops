@@ -3,10 +3,11 @@
 Collects laptop listings from Avito.ma, extracts hardware specs with an LLM, scores them and keeps the database in sync with what is currently for sale.
 
 ```bash
-python pipeline.py          # full run: refresh → parse → dedup
+python pipeline.py          # full run: refresh → parse → dedup → pricing
 python refresh.py -p 5      # scrape and diff 5 pages only (never marks anything sold)
 python parser.py -n 50      # parse about 50 queued listings
 python dedup.py             # recompute duplicate flags
+python pricing.py           # recompute fair prices
 python admin_score.py --all # re-score every laptop after changing the scoring
 python verify.py -n 20      # spot-check stored rows against their live Avito pages
 ```
@@ -51,11 +52,21 @@ Tunable through environment variables: `GEMINI_MODEL` (default `gemini-3.5-flash
 
 ### 4. Score (`score_laptops.py`)
 
-Each laptop gets a 0–1000 hardware score: the CPU is matched against a PassMark benchmark list (`cpu.csv`), the GPU against a tier table with a VRAM bonus, and RAM, storage, screen and condition against lookup tables. Weights: 35% CPU, 25% GPU, 12% RAM, 8% storage, 10% screen, 10% condition. The database derives `value` (score per 1000 DH) from it.
+Each laptop gets a 0–1000 hardware score: the CPU is matched against a PassMark benchmark list (`cpu.csv`), the GPU against a tier table with a VRAM bonus, and RAM, storage, screen and condition against lookup tables. Weights: 35% CPU, 25% GPU, 12% RAM, 8% storage, 10% screen, 10% condition. The score feeds the price model below.
 
 ### 5. Deduplicate (`dedup.py`)
 
 Shops often post the same laptop several times. Active listings with the same brand, model, CPU, RAM, storage, GPU, price, condition and city are grouped; the newest stays visible and the others get `duplicate_of` set. Rows are flagged rather than deleted, because a deleted listing that is still live would be scraped and extracted again the next day.
+
+### 6. Price (`pricing.py`)
+
+Estimates what each laptop's hardware is typically listed for, so the site can show "22% below market" next to a price.
+
+- A gradient-boosted model (scikit-learn) learns asking prices from the active listings: CPU and GPU scores, RAM, storage, screen, condition and brand.
+- It predicts the median price rather than the mean, so the occasional absurd listing does not pull estimates down.
+- Each listing is priced by a model that never saw it (5-fold out-of-fold prediction). Otherwise the model would partly memorize every price and nothing would look cheap or expensive.
+- The same predictions give an honest error figure, stored with each run. On the first full dataset the median error was 15.5%, against 51% for guessing the overall median.
+- Listings more than 50% below their estimate are treated as implausible (deposits, typos, parts) and are not ranked as deals.
 
 ## Database
 

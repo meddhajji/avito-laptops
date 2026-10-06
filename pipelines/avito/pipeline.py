@@ -7,6 +7,7 @@ It executes the following steps in sequence:
 1. refresh.py       (Scrape Avito, diff with DB by avito_id, populate new_laptops)
 2. parser.py        (Loop: parse specs, score, upsert to laptops, clear new_laptops)
 3. dedup.py         (Flag duplicate active listings)
+4. pricing.py       (Estimate a fair market price for every active listing)
 
 Every execution is recorded in the `pipeline_runs` table, and the process exits
 non-zero if any step fails.
@@ -24,6 +25,7 @@ from pathlib import Path
 import db
 from dedup import main as dedup_main
 from parser import main as parser_main
+from pricing import main as pricing_main
 from refresh import main as refresh_main
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -71,6 +73,10 @@ def main(max_pages: int | None = None):
 
         # Step 3: Flag duplicate rows in the laptops table
         stats["duplicates"], t3 = run_step("dedup", dedup_main)
+
+        # Step 4: Estimate fair prices (after dedup, so reposts do not weigh on the market)
+        price_stats, t4 = run_step("pricing", pricing_main)
+        stats.update(price_stats)
     except Exception as e:
         logger.exception("Pipeline failed")
         status, error = "failed", str(e)[:500]
@@ -87,6 +93,7 @@ def main(max_pages: int | None = None):
     logger.info("Refresh:  %.1fs", t1)
     logger.info("Parse:    %.1fs", t2)
     logger.info("Dedup:    %.1fs", t3)
+    logger.info("Pricing:  %.1fs", t4)
     logger.info("Total:    %.1fs (%.1f mins)", total_time, total_time / 60)
     logger.info("=" * 60)
 

@@ -7,7 +7,7 @@ export const PAGE_SIZE = 12;
 export const LAPTOP_COLUMNS = [
     "id", "avito_id", "link", "description", "price", "city", "is_shop", "has_delivery",
     "brand", "model", "cpu", "ram", "storage", "ssd", "gpu", "gpu_type", "gpu_vram",
-    "screen_size", "refresh_rate", "new", "touchscreen", "score", "value",
+    "screen_size", "refresh_rate", "new", "touchscreen", "score", "fair_price", "deal_pct",
     "is_sold", "listed_at", "created_at", "updated_at",
 ].join(", ");
 
@@ -15,11 +15,15 @@ export type LaptopSearchParams = { [key: string]: string | string[] | undefined 
 
 const UPLOAD_WINDOWS_HOURS: Record<string, number> = { "24h": 24, "3d": 72, "1w": 168 };
 
-const ORDER_BY: Record<string, string> = {
-    score: "score",
-    price: "price",
-    value: "value",
-};
+/**
+ * Listings priced this far below their estimate are almost never real offers
+ * (deposits, typos, parts), so they are not ranked as deals.
+ */
+export const SUSPICIOUS_DEAL_PCT = -50;
+
+/** Credible deals first (furthest below market), then listings with no estimate or an implausible price. */
+export const BEST_DEAL_ORDER =
+    `(deal_pct IS NULL OR deal_pct <= ${SUSPICIOUS_DEAL_PCT}), deal_pct ASC, score DESC NULLS LAST`;
 
 const str = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? "";
 
@@ -112,10 +116,11 @@ function buildWhere(params: LaptopSearchParams) {
 export async function fetchLaptops(params: LaptopSearchParams): Promise<{ laptops: Laptop[]; total: number }> {
     const page = Math.max(parseInt(str(params.page) || "0", 10) || 0, 0);
     const direction = str(params.sortOrder) === "asc" ? "ASC" : "DESC";
-    const sortColumn = ORDER_BY[str(params.sortBy) || "value"];
-    const orderBy = sortColumn
-        ? `${sortColumn} ${direction} NULLS LAST, id DESC`
-        : "created_at DESC, id DESC";
+    const sortBy = str(params.sortBy);
+    const orderBy =
+        sortBy === "score" || sortBy === "price" ? `${sortBy} ${direction} NULLS LAST, id DESC`
+        : sortBy === "newest" ? "coalesce(listed_at, created_at) DESC, id DESC"
+        : `${BEST_DEAL_ORDER}, id DESC`;
 
     const { where, values } = buildWhere(params);
     const sql = db();

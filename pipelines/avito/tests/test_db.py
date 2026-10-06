@@ -16,16 +16,6 @@ def test_upsert_updates_existing_row_by_avito_id(conn):
     assert [r["ram"] for r in rows] == [16]
 
 
-def test_value_is_score_per_1000_dh_and_null_without_price(conn):
-    db.upsert_laptops(conn, [
-        make_laptop("1", price=4000.0, score=600),
-        make_laptop("2", price=0.0, score=600),
-    ])
-
-    values = {r["avito_id"]: r["value"] for r in conn.execute("select avito_id, value from laptops")}
-    assert values == {"1": 150.0, "2": None}
-
-
 def test_listing_without_price_gets_no_price_history(conn):
     db.upsert_laptops(conn, [make_laptop("1", price=0.0)])
 

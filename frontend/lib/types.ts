@@ -24,6 +24,9 @@ export interface Laptop {
     listed_at: string | null;
     created_at: string;
     updated_at: string;
-    value?: number;
+    /** Estimated market price for this hardware, in DH. */
+    fair_price: number | null;
+    /** Asking price vs fair_price in percent; -20 = 20% below similar listings. */
+    deal_pct: number | null;
     is_sold?: boolean;
 }

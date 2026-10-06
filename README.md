@@ -2,7 +2,7 @@
 
 A data pipeline and web app that turn messy laptop classifieds from [Avito.ma](https://www.avito.ma) into a structured, searchable market database, with an AI assistant on top.
 
-- **Pipeline**: scrapes listings daily, uses an LLM to extract hardware specs from free-text seller descriptions, scores each laptop against CPU benchmarks, and tracks price changes and sold listings over time.
+- **Pipeline**: scrapes listings daily, uses an LLM to extract hardware specs from free-text seller descriptions, scores each laptop against CPU benchmarks, estimates a fair market price for it, and tracks price changes and sold listings over time.
 - **Dashboard** (`/avito`): full-text search, filters and sorting over the processed listings.
 - **AvitoPT** (`/avitopt`): a chat assistant that answers questions like *"cheapest 3 ThinkPads in Casablanca"* by querying the database through tool calls.
 
@@ -18,7 +18,7 @@ Avito.ma ──► scraper ──► diff vs DB ──► staging queue ──�
 
 | Part | Stack |
 | --- | --- |
-| Pipeline | Python 3.11+, `requests`, `beautifulsoup4`, `google-genai` (Gemini), `psycopg` |
+| Pipeline | Python 3.11+, `requests`, `beautifulsoup4`, `google-genai` (Gemini), `scikit-learn`, `psycopg` |
 | Database | PostgreSQL 14+ (any host: Supabase, Neon, local container) |
 | Web app | Next.js 16 (App Router), React 19, Tailwind CSS v4, Vercel AI SDK, Groq |
 | Automation | GitHub Actions (daily cron) |
@@ -32,12 +32,13 @@ db/
   migrations/          SQL schema, applied in order by `python db.py migrate`
   seed/                Sample of ~600 parsed listings for local demos
 pipelines/avito/
-  pipeline.py          Orchestrator: refresh → parse → dedup, recorded in pipeline_runs
+  pipeline.py          Orchestrator: refresh → parse → dedup → pricing, recorded in pipeline_runs
   scraper.py           Fetches listing pages and extracts ads
   refresh.py           Diffs the scrape against the DB (new, changed, price update, sold)
   parser.py            LLM spec extraction and laptop / non-laptop classification
   score_laptops.py     Hardware scoring (CPU benchmarks, GPU tiers, RAM, storage, screen)
   dedup.py             Flags duplicate active listings
+  pricing.py           Fair market price per listing (gradient-boosted model)
   db.py                Connection, migrations, seed, run bookkeeping
   tests/               pytest suite (runs against a real PostgreSQL)
 frontend/
@@ -52,7 +53,7 @@ frontend/
 
 | Table | Purpose |
 | --- | --- |
-| `laptops` | One row per listing: raw fields, extracted specs, score, `value` (score per 1000 DH), sold status, timestamps |
+| `laptops` | One row per listing: raw fields, extracted specs, score, `fair_price` and `deal_pct` (asking price vs the estimate), sold status, timestamps |
 | `new_laptops` | Staging queue of scraped listings waiting for LLM extraction |
 | `price_history` | Every price a listing has had (written by a trigger) |
 | `rejected_listings` | Listings already rejected as non-laptops, so they are not sent to the LLM again |

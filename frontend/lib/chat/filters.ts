@@ -55,7 +55,7 @@ export const llmFiltersSchema = z.object({
     show_sold: z.boolean().nullable().describe("true only if the user asks about sold listings."),
     upload_date: z.enum(["24h", "3d", "1w"]).nullable().describe("Only listings posted within this window."),
     sort_by: z.enum(["score", "price", "value"]).nullable().describe(
-        "'price' for cheapest/most expensive, 'score' for most powerful/best specs, 'value' for best deal or value for money. null if no preference."
+        "'price' for cheapest/most expensive, 'score' for most powerful/best specs, 'value' for best deal, bargain or value for money (priced furthest below similar laptops). null if no preference."
     ),
     sort_order: z.enum(["asc", "desc"]).nullable().describe("'asc' only for cheapest."),
     limit: z.number().nullable().describe("How many results the user asked for; 1 for a singular superlative like 'the cheapest'. null otherwise."),

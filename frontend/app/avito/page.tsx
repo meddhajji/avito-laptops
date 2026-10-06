@@ -27,7 +27,7 @@ function isDefaultQuery(params: LaptopSearchParams) {
     }
     
     if (params.page && params.page !== "0") return false;
-    if (params.sortBy && params.sortBy !== "value") return false;
+    if (params.sortBy && params.sortBy !== "deal") return false;
     if (params.sortOrder && params.sortOrder !== "desc") return false;
     if (params.hide_sold && params.hide_sold !== "true") return false;
     

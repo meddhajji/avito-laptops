@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { LAPTOP_COLUMNS } from "@/lib/laptops";
+import { BEST_DEAL_ORDER, LAPTOP_COLUMNS, SUSPICIOUS_DEAL_PCT } from "@/lib/laptops";
 import type { Laptop } from "@/lib/types";
 import { DEFAULT_RESULTS, MAX_RESULTS, type LaptopFilters } from "./filters";
 
@@ -14,12 +14,12 @@ const UPLOAD_WINDOWS_HOURS = { "24h": 24, "3d": 72, "1w": 168 } as const;
 const APPLE_TERM = /^(apple|macs?|macbooks?)$/i;
 
 const ORDER_BY: Record<string, string> = {
-    "price:asc": "price ASC NULLS LAST, value DESC NULLS LAST",
+    "price:asc": "price ASC, score DESC NULLS LAST",
     "price:desc": "price DESC NULLS LAST",
-    "value:desc": "value DESC NULLS LAST, score DESC NULLS LAST",
-    "value:asc": "value DESC NULLS LAST, score DESC NULLS LAST",
-    "score:desc": "score DESC NULLS LAST, value DESC NULLS LAST",
-    "score:asc": "score DESC NULLS LAST, value DESC NULLS LAST",
+    "value:desc": BEST_DEAL_ORDER,
+    "value:asc": BEST_DEAL_ORDER,
+    "score:desc": "score DESC NULLS LAST, deal_pct ASC NULLS LAST",
+    "score:asc": "score DESC NULLS LAST, deal_pct ASC NULLS LAST",
 };
 
 /**
@@ -73,6 +73,8 @@ export function buildSearchQuery(filters: LaptopFilters, now: Date = new Date())
     const sortBy = filters.sort_by ?? "score";
     const sortOrder = filters.sort_order ?? (sortBy === "price" ? "asc" : "desc");
     if (sortBy === "price" || sortBy === "value") conditions.push("price > 0");
+    // "Cheapest" should not surface prices that are too low to be real offers
+    if (sortBy === "price" && sortOrder === "asc") conditions.push(`(deal_pct IS NULL OR deal_pct > ${SUSPICIOUS_DEAL_PCT})`);
 
     const where = conditions.join(" AND ");
     const limit = Math.min(Math.max(Math.round(filters.limit ?? DEFAULT_RESULTS), 1), MAX_RESULTS);

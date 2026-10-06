@@ -39,6 +39,7 @@ LAPTOP_COLS = [
 RUN_STAT_COLS = [
     "scraped", "pages_failed", "complete", "new_items", "reparsed", "price_updates",
     "marked_sold", "relisted", "parsed", "rejected", "queue_remaining", "duplicates",
+    "priced", "price_model_error",
 ]
 
 

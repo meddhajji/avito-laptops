@@ -16,7 +16,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 // Modularized components
-import { PipelineStats } from "@/components/avito/PipelineInfo";
 import { FilterDialog } from "@/components/avito/FilterDialog";
 import { LaptopTable } from "@/components/avito/LaptopTable";
 import { Pagination } from "@/components/avito/Pagination";
@@ -24,7 +23,7 @@ import { ALL_COLUMNS } from "@/components/avito/Columns";
 
 const PAGE_SIZE = 12;
 
-type SortOption = "default" | "score" | "price" | "value";
+type SortOption = "deal" | "score" | "price" | "newest";
 
 interface Filters {
     brand: string;
@@ -112,7 +111,6 @@ export default function AvitoDashboard({
 
     // Local state for interactive UI
     const [filterOpen, setFilterOpen] = useState(false);
-    const [statsOpen, setStatsOpen] = useState(false);
     const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
     const [draftFilters, setDraftFilters] = useState<Filters>(parseFiltersFromURL(new URLSearchParams(searchParams.toString())));
     const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
@@ -146,7 +144,8 @@ export default function AvitoDashboard({
     }, [searchParams, router]);
 
     const page = parseInt(searchParams.get("page") || "0", 10);
-    const sortBy = (searchParams.get("sortBy") as SortOption) || "value";
+    const requestedSort = searchParams.get("sortBy");
+    const sortBy: SortOption = requestedSort === "score" || requestedSort === "price" || requestedSort === "newest" ? requestedSort : "deal";
     const sortOrder = (searchParams.get("sortOrder") as "asc" | "desc") || "desc";
 
     const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -257,14 +256,6 @@ export default function AvitoDashboard({
                     {/* Stats row */}
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
                         <p>{total.toLocaleString("en-US")} laptops available</p>
-                        <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
-                            <DialogTrigger id="avito-stats-trigger" render={
-                                <button className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md hover:border-black/10 dark:hover:border-white/20 px-2 py-0.5 rounded text-xs font-medium border border-black/5 dark:border-white/5 cursor-pointer shadow-sm">
-                                    Stats
-                                </button>
-                            } />
-                            <PipelineStats lastUpdate={lastUpdate} total={total} />
-                        </Dialog>
                     </div>
                 </div>
 
@@ -301,10 +292,10 @@ export default function AvitoDashboard({
                             <p className="px-3 pt-1 pb-2 text-[10px] font-semibold tracking-widest uppercase text-zinc-500 select-none">
                                 Sort by
                             </p>
-                            <SelectItem value="default" className="rounded-none px-3 py-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Default</SelectItem>
-                            <SelectItem value="value"   className="rounded-none px-3 py-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Value</SelectItem>
+                            <SelectItem value="deal"    className="rounded-none px-3 py-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Best deal</SelectItem>
                             <SelectItem value="score"   className="rounded-none px-3 py-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Score</SelectItem>
-                            <SelectItem value="price"   className="rounded-none px-3 pb-[calc(0.5rem+1.5px*2)] pt-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Price</SelectItem>
+                            <SelectItem value="price"   className="rounded-none px-3 py-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Price</SelectItem>
+                            <SelectItem value="newest"  className="rounded-none px-3 pb-[calc(0.5rem+1.5px*2)] pt-2 text-sm font-medium text-zinc-300 cursor-pointer transition-all duration-150 focus:bg-white/[0.08] focus:text-white">Newest</SelectItem>
                         </SelectContent>
                     </Select>
                     <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
@@ -365,12 +356,11 @@ export default function AvitoDashboard({
                 </div>
 
                 <div className="text-[11px] text-muted-foreground/60 text-center space-y-0.5 pt-4 pb-4 max-w-4xl mx-auto leading-relaxed border-t border-black/5 dark:border-white/5 mt-4">
-                    <p>Hardware specs are extracted by AI.</p>
-                    {lastUpdate && (
-                        <p>
-                            Data refreshed {new Date(lastUpdate.created_at).toLocaleDateString("en-GB", { timeZone: "UTC" })}
-                        </p>
-                    )}
+                    <p>&ldquo;vs market&rdquo; compares each asking price with an estimate learned from similar listings.</p>
+                    <p>
+                        Specs extracted with Gemini
+                        {lastUpdate && <> · Last updated {new Date(lastUpdate.created_at).toLocaleDateString("en-GB", { timeZone: "UTC" })}</>}
+                    </p>
                 </div>
             </div>
         </div>
