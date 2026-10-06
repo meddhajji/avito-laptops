@@ -129,15 +129,20 @@ SPECS (only when is_laptop=true; use null specs when is_laptop=false):
   * Only family and generation given ("i5 8eme", "i7 13th gen", "core i5 de 6ème génération"):
     write family + generation as "i5 8th gen", "i7 13th gen", "Ryzen 5 3rd gen".
   * Only the family given: write just the family ("i5", "Ryzen 7", "Celeron").
+  * Keep every part of a model number that the text gives: "ryzen 5 pro 4650u" -> "Ryzen 5 Pro 4650u",
+    "i5 m480" -> "i5-m480", "pentium gold 7505" -> "Pentium Gold 7505". Do not shorten it to the family.
   * Never invent a model number that is not in the text.
 - gpu: commercial name with spaces not dashes. First letter of brand prefix capitalized only.
   Examples: "Rtx 4060", "Gtx 1650 Ti", "Radeon Rx 6600m", "Mx 450", "Rtx 5090".
 - gpu_type: "Integrated", "Dedicated", or null.
 - ram, storage, gpu_vram: numbers in GB (1 TB = 1000 GB). ram and storage must be whole numbers.
 - ssd: 1 if SSD/NVMe/M.2, 0 if HDD, null if unknown.
-- screen_size: number in inches (e.g. 15.6), null if unknown.
+- screen_size: number in inches (e.g. 15.6), null if unknown. Punctuation is stripped from the text, so
+  "écran 15 6 pouces" means 15.6, but "écran 14 3 usb" means 14 inches and 3 USB ports. Real sizes are
+  11.6, 12.5, 13.3, 14, 15.6, 16, 17.3; if the digits do not form one of these, keep only the whole number.
 - refresh_rate: number in Hz (e.g. 144), null if unknown.
-- new: 1 if explicitly brand new/sealed/neuf/جديد, 0 if used/occasion/reconditionné, null if unclear.
+- new: 1 only if explicitly brand new, sealed or never used (neuf, jamais utilisé, sous emballage, جديد).
+  "comme neuf", "état neuf", "toujours neuf" and "nouveau" describe a used laptop: use 0. null if unclear.
 - touchscreen: 1 if touchscreen/tactile mentioned, null if not mentioned.
 - Use null for any spec that cannot be clearly determined from the text. Never guess."""
 

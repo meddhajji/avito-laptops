@@ -1,0 +1,429 @@
+[
+ {
+  "id": 0,
+  "text": "vente pc sony vaio à vendre un bijou pc sony vaio réf vgn fe41e. processeur intel core 2. cam intégrés. clavier qwerty. écran 15.4 sa configuration 2 go de ram. 80 go disque dur. avec son chargeur. 441 dh.",
+  "expected": {
+   "kept": true,
+   "brand": "Sony",
+   "cpu": [
+    "Core 2",
+    "Intel Core 2"
+   ],
+   "ram": 2.0,
+   "storage": 80.0,
+   "ssd": 0,
+   "screen_size": 15.4,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 1,
+  "text": "hp pavilion plus oled rtx 2050 i7 1255u 16gb 1to écran hp pavilion plus oled 14 2.8k oled 90hz nvidia rtx 2050 4 go gddr6 intel core i7 1255u 12cœurs jusqu à 4.7 ghz ram 16go ssd 1to clavier rétroéclairé empreinte digitale son par bang olufsen. découvrez également nos autres produits et nouveautés sur instagram electrofatal n hésitez pas à nous contacter en message privé.",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-1255u",
+   "ram": 16.0,
+   "storage": 1000.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Dedicated"
+  }
+ },
+ {
+  "id": 2,
+  "text": "écran gamer msi mag 255xf 24 pouces 300hz 0.5ms marque msi modèle mag 255xf taille de l écran 24.5 62 23 cm temps de réponse 0.5 ms gtg taux de rafraîchissement 300 hz technologie rapid ips contrast 10 1 résolution 1920 x 1080 fhd type de connecteur 1x displayport 1.4a 2x hdmi 2.0b 1x sortie casque 3.5mm état neuf",
+  "expected": {
+   "kept": false
+  }
+ },
+ {
+  "id": 3,
+  "text": "dell latitude 5310 core i7 dell latitude 5310 core i7 16gb ram 256gb ssd pc city offre spéciale à seulement 3300 dh découvrez le dell latitude 5310 un ordinateur portable professionnel compact et performant idéal pour le travail les études la bureautique et une utilisation quotidienne. processeur intel core i7 1065g7 ram 16 gb stockage 256 gb ssd écran 13 pouces inclus sac à dos souris logitech garantie 6 mois prix promo 3300 dh disponible chez pc city . contactez nous pour plus d informations ou pour commander.",
+  "expected": {
+   "kept": true,
+   "brand": "Dell",
+   "cpu": "i7-1065g7",
+   "ram": 16.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 13.0,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 4,
+  "text": "dell latitude 3450 2025 i5 13ème gen 14 cycles pc zone kenitra partout dell latitude 3450 edition 2025 toujours neuf 14 cycles de charge écran de 14 ips full hd processeur core i5 1335u 12cpus up 4.6ghz 16go ram ddr5 5200mt s cartes graphiques intel r iris xe graphics capacité de 512go ssd nvme contactez moi par tél ou sur whatsapp si vous êtes intéressés merci livraison partout",
+  "expected": {
+   "kept": true,
+   "brand": "Dell",
+   "cpu": "i5-1335u",
+   "ram": 16.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 5,
+  "text": "ordinateur portable emporté à l étranger ordinateurs portables à vendre en gros importés de l étranger tous fonctionnels pour les gammes supérieures et les professionnels. inclut asus i7 lenovo i7 hp pavilion i7 acer i7.. prix 60 dh pour le tout.",
+  "expected": {
+   "kept": false
+  }
+ },
+ {
+  "id": 6,
+  "text": "pavillon hp core i3 hp professionnel gammer pavillon hp professionnel core i3 4 cpu . écran 15 6 pouces . webcam intégrée . fiche technique . 4 go de ram jusqu à 8 go . vitesse 2 5 ghz . 320 go de stockage . carte graphique intel hd professionnelle et puissante pour les jeux . batterie 1 heure",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i3",
+   "ram": 4.0,
+   "storage": 320.0,
+   "ssd": 0,
+   "screen_size": 15.6,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 7,
+  "text": "hp omen i7 10750h rtx 3060 16go ssd 1t intel core i7 10750h 10e génération offrant d excellentes performances pour le gaming et les applications professionnelles nvidia geforce rtx 3060 6go gddr6 idéale pour les jeux a le streaming et la création de contenu 16go ddr4 pour un multitâche rapide et fluide ssd nvme 1to offrant un démarrage instantané et un grand espace de stockage écran 15.6 full hd ips 144hz pour une image fluide et immersive hp omen gaming conçu pour allier puissance performance et fiabilité clavier rétroéclairé gaming wi fi 6 et bluetooth excellente autonomie excellent état a plus machine importée d europe testée et prête à l emploi idéal pour gaming ea sports fc 26 gta v valorant counter strike 2 fortnite warzone forza horizon 5 call of duty photoshop premiere pro after effects blender autocad solidworks développement programmation streaming windows 11 pro prêt à l emploi garantie hamzatech 3 mois partout au maroc quantité très limitée une seule pièce disponible contactez nous dès maintenant pour réserver votre machine. hp omen hp omen 15 hp maroc pc gamer maroc intel core i7 10750h rtx 3060 nvidia rtx3060 16go ddr4 ssd nvme 1to windows 11 gaming laptop fortnite valorant cs2 gta v ea sports fc 26 warzone forza horizon 5 photoshop premiere pro after effects blender autocad solidworks programmation laptop gaming",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-10750h",
+   "ram": 16.0,
+   "storage": 1000.0,
+   "ssd": 1,
+   "screen_size": 15.6,
+   "gpu_type": "Dedicated"
+  }
+ },
+ {
+  "id": 8,
+  "text": "lenovo thinkpad l14 pentium gold 11ème gen tactile pc zone kenitra partout lenovo thinkpad l14 gen 2 ecran de 14 tactile ips fhd intel pentium gold 7505 4cpus 2ghz up 3.5ghz 4go ram ddr4 3200mts cartes graphiques intel uhd graphics capacité de 128go ssd nvme livraison partout",
+  "expected": {
+   "kept": true,
+   "brand": "Lenovo",
+   "cpu": "Pentium Gold 7505",
+   "ram": 4.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 9,
+  "text": "lenovo thinkpad l14 i7 13ème gén 16go 512ssd 13ème génération cpu intel core i7 1355u total cores. 10 total threads. 12 max turbo frequency. 5.0 ghz. ram 16go stockage 512go ssd nvme ecran 14 full hd ips intel iris r xe graphics 20go batterie excellente 4h plus prix 5500 dh partout au maroc pour plus d infos contactez nous voir moins",
+  "expected": {
+   "kept": true,
+   "brand": "Lenovo",
+   "cpu": "i7-1355u",
+   "ram": 16.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 10,
+  "text": "msi cyborg rtx 5060 msi cyborg 15 intel core i7 13620h 10cores 16cpu 24mo 16go ram ddr5 5200mhz 512go ssd nvme pcie nvidia geforce rtx 5060 8gb intel uhd graphics ecran 15 fhd 144hz clavier rétro éclairé rgb pc neuf jamais utilisé",
+  "expected": {
+   "kept": true,
+   "brand": "Msi",
+   "cpu": "i7-13620h",
+   "ram": 16.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": 15.0,
+   "gpu_type": "Dedicated"
+  }
+ },
+ {
+  "id": 11,
+  "text": "lenovo i7 ram 8 disque 512 ssd écran 15 lenovo 80e5 importé d italie bon état caractéristiques intel core i7 5500u 2.40 ghz 8 go ram ssd 512 écran 15 pouces intel hd graphics 5500 hdmi 2 ports usb batterie 2h30 windows 10 installé et activé chargeur original disponible à casablanca.",
+  "expected": {
+   "kept": true,
+   "brand": "Lenovo",
+   "cpu": "i7-5500u",
+   "ram": 8.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": 15.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 12,
+  "text": "hp elitebook 845 g7 ryzen 5 8 256 7h battery hp elitebook 845 g7 à vendre. processeur amd ryzen 5 pro 4650u. ram 16go. ssd 256go. batterie fonctionne 7 heures windows 11 pro. pc professionnel rapide et léger. écran clavier wi fi son et ports fonctionnent bien. avec chargeur. prix légèrement négociable.",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "Ryzen 5 Pro 4650u",
+   "ram": 16.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": null,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 13,
+  "text": "vends pc hp pc est un hp laptop 15 fd0x avec intel core i7 1255u 12ème génération 16 go ram ssd 512 go intel iris xe graphics windows 11 pour plus d informations contactez ce numéro",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-1255u",
+   "ram": 16.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": [
+    15,
+    null
+   ],
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 14,
+  "text": "pc portable asus 128 ssd stockage 4g ram écran 60hz geforce 980 chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Asus",
+   "cpu": null,
+   "ram": 4.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": null,
+   "gpu_type": "Dedicated"
+  }
+ },
+ {
+  "id": 15,
+  "text": "hp elitebook x360 1030 g8 i5 11ème gen hp elitebook x360 1030 g8 i5 11ème gen pc portable professionnel et impeccable adapté pour le travail les études le commerce la programmation et l usage quotidien. intel core i5 1145g7 11ème gen ram 8gb ssd 256gb intel iris xe graphics écran 13.3 full hd tactile écran tourne à 360 laptop tablette windows 64 bits écran tactile stylet léger élégant et facile à transporter très bon état 4 250 dh négociable raisonnablement vente en main propre pour les intéressés envoyez un message privé",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i5-1145g7",
+   "ram": 8.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 13.3,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 16,
+  "text": "macbook i5 pro ram 8 disque ssd batterie 5h macbook pro modèle 2012 écran 13.3 processeur intel core i5 ghz 2.5 ram 8 disque dur 128 ssd intel hd graphique 40 1536 mo avec chargeur original batterie 5h",
+  "expected": {
+   "kept": true,
+   "brand": "Apple",
+   "cpu": "i5",
+   "ram": 8.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": 13.3,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 17,
+  "text": "huawei matebook d14 ryzen 7 8go ram ssd 512go ryzen 7 3700u 8 go ram ssd nvme 512 go radeon vega écran 14 full hd windows 11 batterie à environ 81 de capacité pc réinitialisé prêt à être configuré",
+  "expected": {
+   "kept": true,
+   "brand": "Huawei",
+   "cpu": "Ryzen 7 3700u",
+   "ram": 8.0,
+   "storage": 512.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 18,
+  "text": "pc portable asus vivobook 16 i7 11ème 512 8 pc portable asus vivobook 16 officiel garantie core i7 11ème génération stockage 512 ram 8 batterie excellente chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Asus",
+   "cpu": "i7 11th gen",
+   "ram": 8.0,
+   "storage": 512.0,
+   "ssd": null,
+   "screen_size": 16.0,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 19,
+  "text": "pc i5 7ème génération écran 13 3 pouces processeur intel core i5 mémoire 8 go de ram stockage 128 go ssd rapide et fiable autonomie jusqu à 12 heures système d exploitation macos disponible sur demande en core i5 ou en core i7.",
+  "expected": {
+   "kept": true,
+   "brand": null,
+   "cpu": "i5 7th gen",
+   "ram": 8.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": 13.3,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 20,
+  "text": "acer i5 professionnel ram 8 disque ssd batterie 4h acer i5 importé d italie comme neuf processeur i5 4210 1.70ghz 2.40 ram 8 disque dur 128 ssd écran 15 3 usb hdmi intel carte graphique hd family caméra batterie 4h avec chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Acer",
+   "cpu": [
+    "i5-4210",
+    "i5-4210u"
+   ],
+   "ram": 8.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": 15.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 21,
+  "text": "acer i5 professionnel ram 8 disque 500 acer i5 importé d italie comme neuf processeur i5 m480 2.67 ram 8 disque dur 500 écran 15 3 usb intel carte graphique hd caméra batterie 1h avec chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Acer",
+   "cpu": [
+    "i5-m480",
+    "i5 m480"
+   ],
+   "ram": 8.0,
+   "storage": 500.0,
+   "ssd": 0,
+   "screen_size": 15.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 22,
+  "text": "hp i7 7ème gén ram 8 disque 256 ssd batterie 5h port sim hp probook 640 g3 i7 7ème génération très bon état importé d italie. windows 10 processeur core i7 7600u cpu 2.80 ghz 2.90 ghz ram 8 go disque dur 256 ssd écran 14 pouces 3 ports usb bluetooth port sim carte graphique intel hd 620 autonomie batterie 5h avec chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-7600u",
+   "ram": 8.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 14.0,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 23,
+  "text": "lenovo thinkpad x390 nouveau thinkpad x390 yoga core i5 8ème génération caractéristiques principales processeur intel core i5 8265u de 8ème génération 16 go de mémoire ddr4 sdram 2400 mhz écran tactile de 13 3 full hd 1920 x 1080 ips stockage rapide avec un ssd de 256 go connectivité 1x usb c 1x hdmi wi fi bluetooth stylet thinkpad pen pro intégré lecteur d empreintes digitales et caméra infrarouge en option windows 11 professionnel couleur noir",
+  "expected": {
+   "kept": true,
+   "brand": "Lenovo",
+   "cpu": "i5-8265u",
+   "ram": 16.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 13.3,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 24,
+  "text": "macbook air 13 pouces m4 256 go macbook air 13 pouces m4 ram 16 go stockage 256 go ssd",
+  "expected": {
+   "kept": true,
+   "brand": "Apple",
+   "cpu": "M4",
+   "ram": 16.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 13.0,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 25,
+  "text": "pc gamer asus tuf 17.3 32ram 1to 1650ti 4gb ryzen 5 4600h avec graphiques radeon gtx 1650 ti 4 go gddr6 32 go ram 3200 mhz ddr4 1 to ssd m.2 nvme 120 hz clavier rgb souris rgb système armoury crate 17.3 pouces chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Asus",
+   "cpu": "Ryzen 5 4600h",
+   "ram": 32.0,
+   "storage": 1000.0,
+   "ssd": 1,
+   "screen_size": 17.3,
+   "gpu_type": "Dedicated"
+  }
+ },
+ {
+  "id": 26,
+  "text": "hp elitebook 850 g3 i7 ssd hdd très bon état hp elitebook 850 g3 i7 ssd hdd très bon état je mets en vente un ordinateur portable professionnel hp elitebook 850 g3 idéal pour travail études ou développement. caractéristiques processeur intel core i7 6500u ram 8 go stockage ssd 256 go rapide hdd 256 go stockage écran 15.6 full hd carte graphique intel hd 520 pc rapide grâce au ssd fonctionne parfaitement aucun problème détecté. état propre",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-6500u",
+   "ram": 8.0,
+   "storage": [
+    256,
+    512
+   ],
+   "ssd": 1,
+   "screen_size": 15.6,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 27,
+  "text": "hp i7 elitebook professionnel ram 8 disque ssd hp i7 elitebook 2570p très bon état importé d italie windows 10 processeur core i7 3520m cpu 2.90 ghz 2. 90 ghz ram 8 disque dur 128 ssd écran 13 3 usb bluetooth intel carte graphique 40 batterie autonomie 3h avec chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": "i7-3520m",
+   "ram": 8.0,
+   "storage": 128.0,
+   "ssd": 1,
+   "screen_size": 13.3,
+   "gpu_type": null
+  }
+ },
+ {
+  "id": 28,
+  "text": "hp i5 elitbook slime ram 8 disc 256 ssd hp slime elitbook 840 g3 importé d italie comme neuf processeur i5 6200 2.30ghz 2.40 ram 8 disque dur 256 ssd écran 14 3 usb intel carte graphique hd 520 caméra batterie 6h avec chargeur original",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": [
+    "i5-6200",
+    "i5-6200u"
+   ],
+   "ram": 8.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 14,
+   "gpu_type": "Integrated"
+  }
+ },
+ {
+  "id": 29,
+  "text": "hp i5 6ème gen ram 8 disque 256 ssd batterie 5h lecteur sim hp probook 650 g2 i5 6ème génération très bon état importé d italie windows 10 processeur core i5 6300 2.50 ghz ram 8 go disque dur 256 ssd écran 15 pouces lecteur carte sim 3 ports usb bluetooth carte graphique intel hd 520 caméra batterie autonomie 5h avec chargeur original.",
+  "expected": {
+   "kept": true,
+   "brand": "Hp",
+   "cpu": [
+    "i5-6300",
+    "i5-6300u"
+   ],
+   "ram": 8.0,
+   "storage": 256.0,
+   "ssd": 1,
+   "screen_size": 15.0,
+   "gpu_type": "Integrated"
+  }
+ }
+]
