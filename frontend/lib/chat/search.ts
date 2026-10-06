@@ -66,7 +66,7 @@ export function buildSearchQuery(filters: LaptopFilters, now: Date = new Date())
         }
         const pattern = bind(`%${term}%`);
         conditions.push(
-            `(brand ILIKE ${pattern} OR model ILIKE ${pattern} OR cpu ILIKE ${pattern} OR gpu ILIKE ${pattern} OR description ILIKE ${pattern})`
+            `(brand ILIKE ${pattern} OR model ILIKE ${pattern} OR cpu ILIKE ${pattern} OR gpu ILIKE ${pattern})`
         );
     }
 

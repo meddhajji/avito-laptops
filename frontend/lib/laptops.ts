@@ -7,7 +7,7 @@ export const PAGE_SIZE = 12;
 export const LAPTOP_COLUMNS = [
     "id", "avito_id", "link", "description", "price", "city", "is_shop", "has_delivery",
     "brand", "model", "cpu", "ram", "storage", "ssd", "gpu", "gpu_type", "gpu_vram",
-    "screen_size", "refresh_rate", "new", "touchscreen", "score", "fair_price", "deal_pct",
+    "screen_size", "refresh_rate", "new", "touchscreen", "score", "previous_price", "fair_price", "deal_pct",
     "is_sold", "listed_at", "created_at", "updated_at",
 ].join(", ");
 

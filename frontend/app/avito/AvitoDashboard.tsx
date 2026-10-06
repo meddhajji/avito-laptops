@@ -25,6 +25,8 @@ const PAGE_SIZE = 12;
 
 type SortOption = "deal" | "score" | "price" | "newest";
 
+const SORT_LABELS: Record<SortOption, string> = { deal: "Best deal", score: "Score", price: "Price", newest: "Newest" };
+
 interface Filters {
     brand: string;
     city: string;
@@ -280,8 +282,8 @@ export default function AvitoDashboard({
                         params.set("page", "0");
                         updateURL(params);
                     }}>
-                        <SelectTrigger className="flex-1 sm:flex-none sm:w-[87px] shrink-0 capitalize">
-                            <SelectValue />
+                        <SelectTrigger className="flex-1 sm:flex-none sm:w-[112px] shrink-0">
+                            <SelectValue>{(value: SortOption) => SORT_LABELS[value] ?? SORT_LABELS.deal}</SelectValue>
                         </SelectTrigger>
                         <SelectContent
                             side="bottom"

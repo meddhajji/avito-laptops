@@ -22,6 +22,26 @@ def test_listing_without_price_gets_no_price_history(conn):
     assert conn.execute("select count(*) n from price_history").fetchone()["n"] == 0
 
 
+def test_search_ignores_words_that_only_appear_in_the_description(conn):
+    db.upsert_laptops(conn, [
+        make_laptop("1", brand="Hp", model="Elitebook 840"),
+        make_laptop("2", brand="Dell", model="Chromebook 11", description="lot chromebook dell hp vente en gros"),
+    ])
+
+    hits = conn.execute("select avito_id from laptops where search_vector @@ to_tsquery('simple', 'hp:*')").fetchall()
+    assert [h["avito_id"] for h in hits] == ["1"]
+
+
+def test_previous_price_is_kept_when_the_price_changes(conn):
+    db.upsert_laptops(conn, [make_laptop("1", price=4000.0)])
+    assert conn.execute("select previous_price from laptops").fetchone()["previous_price"] is None
+
+    conn.execute("update laptops set price = 3500 where avito_id = '1'")
+    conn.execute("update laptops set city = 'Rabat' where avito_id = '1'")  # unrelated update keeps it
+
+    assert conn.execute("select previous_price from laptops").fetchone()["previous_price"] == 4000.0
+
+
 def test_search_vector_matches_prefix_across_fields(conn):
     db.upsert_laptops(conn, [
         make_laptop("1", brand="Lenovo", model="Thinkpad T14", city="Rabat"),

@@ -59,6 +59,10 @@ describe("buildSearchQuery", () => {
         expect(params.some((value) => String(value).includes("drop"))).toBe(true);
     });
 
+    it("searches structured fields, not the seller's free text", () => {
+        expect(buildSearchQuery({ search_terms: ["hp"] }).resultsSQL).not.toContain("description ILIKE");
+    });
+
     it("includes sold listings only when asked", () => {
         expect(buildSearchQuery({ show_sold: true }).resultsSQL).not.toContain("NOT is_sold");
     });

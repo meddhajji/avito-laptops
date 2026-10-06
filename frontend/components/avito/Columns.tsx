@@ -67,6 +67,9 @@ const RENDER_PRICE = (l: Laptop) => {
     return (
         <span className="flex items-baseline gap-2 whitespace-nowrap">
             <span className="font-semibold text-foreground/90">{l.price.toLocaleString("en-US")} DH</span>
+            {l.previous_price != null && l.previous_price > l.price && (
+                <span title={`Price dropped from ${l.previous_price.toLocaleString("en-US")} DH`} className="cursor-help text-[11px] text-emerald-400">↓</span>
+            )}
             {RENDER_DEAL(l)}
         </span>
     );
