@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Github, Mail, Phone, Check, Instagram, Linkedin } from "lucide-react";
+import { Github, Mail, Phone, Check, Linkedin } from "lucide-react";
 
 export function Navbar() {
     const pathname = usePathname();
@@ -27,7 +27,6 @@ export function Navbar() {
     };
 
     const links = [
-        { href: "/", label: "Home" },
         { href: "/avito" + (pathname !== "/avito" ? avitoParams : ""), label: "Avito" },
         { href: "/avitopt", label: "AvitoPT" },
     ];
@@ -55,14 +54,11 @@ export function Navbar() {
                     </div>
                 </div>
                 <div className="flex items-center gap-1 text-muted-foreground">
-                    <a href="https://github.com/meddhajji" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
+                    <a href="https://github.com/meddhajji/avito-laptop-tracker" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
                         <Github className="size-4" />
                     </a>
                     <a href="https://www.linkedin.com/in/mohamed-hajji-301330282" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
                         <Linkedin className="size-4" />
-                    </a>
-                    <a href="https://instagram.com/meddhajji" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
-                        <Instagram className="size-4" />
                     </a>
                     <a href="mailto:Mohamed.hajji@emines.um6p.ma" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
                         <Mail className="size-4" />

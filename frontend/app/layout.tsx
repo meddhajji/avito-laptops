@@ -11,11 +11,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Hajji - portfolio",
-  description: "Data projects portfolio",
+  title: "Avito Laptop Tracker",
+  description: "Daily-updated database of laptop listings on Avito.ma, with specs extracted by AI and a chat assistant to search them.",
   openGraph: {
-    title: "Hajji - portfolio",
-    description: "Data projects portfolio",
+    title: "Avito Laptop Tracker",
+    description: "Daily-updated database of laptop listings on Avito.ma, with specs extracted by AI and a chat assistant to search them.",
     type: "website",
     locale: "en_US",
   }
