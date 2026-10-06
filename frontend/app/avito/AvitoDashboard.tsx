@@ -356,7 +356,7 @@ export default function AvitoDashboard({
                 </div>
 
                 <div className="text-[11px] text-muted-foreground/60 text-center space-y-0.5 pt-4 pb-4 max-w-4xl mx-auto leading-relaxed border-t border-black/5 dark:border-white/5 mt-4">
-                    <p>&ldquo;vs market&rdquo; compares each asking price with an estimate learned from similar listings.</p>
+                    <p>The percentage beside a price compares it with an estimate learned from similar listings.</p>
                     <p>
                         Specs extracted with Gemini
                         {lastUpdate && <> · Last updated {new Date(lastUpdate.created_at).toLocaleDateString("en-GB", { timeZone: "UTC" })}</>}

@@ -76,10 +76,10 @@ describe("buildSearchQuery", () => {
         expect(buildSearchQuery({ sort_by: "price", sort_order: "desc" }).resultsSQL).not.toContain("deal_pct > -50");
     });
 
-    it("ranks best deals by distance below market, credible ones first", () => {
+    it("ranks best deals by discount band then hardware score, credible ones first", () => {
         const { resultsSQL } = buildSearchQuery({ sort_by: "value" });
 
-        expect(resultsSQL).toContain("ORDER BY (deal_pct IS NULL OR deal_pct <= -50), deal_pct ASC");
+        expect(resultsSQL).toContain("ORDER BY (deal_pct IS NULL OR deal_pct <= -50), deal_pct / 10, score DESC");
     });
 
     it("treats mac, macbook and apple as the same brand", () => {

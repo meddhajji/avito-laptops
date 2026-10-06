@@ -21,9 +21,14 @@ const UPLOAD_WINDOWS_HOURS: Record<string, number> = { "24h": 24, "3d": 72, "1w"
  */
 export const SUSPICIOUS_DEAL_PCT = -50;
 
-/** Credible deals first (furthest below market), then listings with no estimate or an implausible price. */
+/**
+ * Credible deals first, then listings with no estimate or an implausible price.
+ * Deals are ranked in 10-point discount bands and by hardware score within a
+ * band, so the top of the list is strong laptops at a real discount rather than
+ * whatever sits closest to the implausible threshold.
+ */
 export const BEST_DEAL_ORDER =
-    `(deal_pct IS NULL OR deal_pct <= ${SUSPICIOUS_DEAL_PCT}), deal_pct ASC, score DESC NULLS LAST`;
+    `(deal_pct IS NULL OR deal_pct <= ${SUSPICIOUS_DEAL_PCT}), deal_pct / 10, score DESC NULLS LAST`;
 
 const str = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? "";
 

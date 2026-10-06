@@ -39,24 +39,35 @@ const SUSPICIOUS_DEAL_PCT = -50;
 const NOTABLE_DEAL_PCT = 15; // the price model's typical error; smaller gaps are noise
 
 /** Asking price against the estimated market price for the same hardware. */
-export const RENDER_DEAL = (l: Laptop) => {
-    if (l.deal_pct == null || !l.fair_price) return "";
+const RENDER_DEAL = (l: Laptop) => {
+    if (l.deal_pct == null || !l.fair_price) return null;
     const estimate = `Similar laptops are listed around ${l.fair_price.toLocaleString("en-US")} DH`;
 
     if (l.deal_pct <= SUSPICIOUS_DEAL_PCT) {
         return (
             <span title={`${estimate}. A price this low is rarely real: it may be a deposit, a typo or a part.`} className="cursor-help text-[11px] font-semibold text-amber-400/80">
-                Check price
+                check
             </span>
         );
     }
     if (l.deal_pct <= -NOTABLE_DEAL_PCT) {
-        return <span title={estimate} className="cursor-help font-semibold text-emerald-400">{l.deal_pct}%</span>;
+        return <span title={estimate} className="cursor-help text-[11px] font-semibold text-emerald-400">{l.deal_pct}%</span>;
     }
     if (l.deal_pct >= NOTABLE_DEAL_PCT) {
-        return <span title={estimate} className="cursor-help text-muted-foreground/60">+{l.deal_pct}%</span>;
+        return <span title={estimate} className="cursor-help text-[11px] text-muted-foreground/50">+{l.deal_pct}%</span>;
     }
-    return <span title={estimate} className="cursor-help text-muted-foreground/45">Fair</span>;
+    return <span title={estimate} className="cursor-help text-[11px] text-muted-foreground/35">fair</span>;
+};
+
+/** Price with its distance from the market estimate beside it. */
+const RENDER_PRICE = (l: Laptop) => {
+    if (!l.price) return <span className="text-muted-foreground/40 italic">N/A</span>;
+    return (
+        <span className="flex items-baseline gap-2 whitespace-nowrap">
+            <span className="font-semibold text-foreground/90">{l.price.toLocaleString("en-US")} DH</span>
+            {RENDER_DEAL(l)}
+        </span>
+    );
 };
 
 export const ALL_COLUMNS: ColDef[] = [
@@ -71,8 +82,7 @@ export const ALL_COLUMNS: ColDef[] = [
         return `${l.storage} GB`;
     }},
     { key: "gpu", label: "GPU", defaultOn: true, width: "w-[130px]", render: (l) => <span className="truncate block">{l.gpu || ""}</span> },
-    { key: "price", label: "Price", defaultOn: true, width: "w-[100px]", render: (l) => l.price ? <span className="font-semibold text-emerald-500/90">{l.price.toLocaleString("en-US")} DH</span> : <span className="text-muted-foreground/40 italic">N/A</span> },
-    { key: "deal", label: "vs market", defaultOn: true, width: "w-[95px]", render: RENDER_DEAL },
+    { key: "price", label: "Price", defaultOn: true, width: "w-[150px]", render: RENDER_PRICE },
     { key: "city", label: "City", defaultOn: true, width: "w-[120px]", render: (l) => <span className="truncate block text-muted-foreground">{l.city || ""}</span> },
     { key: "new", label: "Cond.", defaultOn: true, width: "w-[80px]", render: (l) => l.new === 1 ? <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-tight">New</Badge> : (l.new === 0 ? <span className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-tight">Used</span> : "") },
     { key: "gpu_type", label: "GPU type", defaultOn: false, render: (l) => l.gpu_type || "" },
