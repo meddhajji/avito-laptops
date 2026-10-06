@@ -2,68 +2,95 @@
 
 [![CI](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml)
 
-A data pipeline and web app that turn messy laptop classifieds from [Avito.ma](https://www.avito.ma) into a structured, searchable market database, with an AI assistant on top.
+**Live: [avitolaptops.vercel.app](https://avitolaptops.vercel.app)**
 
-- **Pipeline**: scrapes listings daily, uses an LLM to extract hardware specs from free-text seller descriptions, scores each laptop against CPU benchmarks, estimates a fair market price for it, and tracks price changes and sold listings over time.
-- **Dashboard** (`/avito`): full-text search, filters and sorting over the processed listings.
-- **AvitoPT** (`/avitopt`): a chat assistant that answers questions like *"cheapest 3 ThinkPads in Casablanca"* by querying the database through tool calls.
+Avito.ma is Morocco's largest classifieds site. Its laptop category holds about 24,000 listings written as free text in French, Arabic and Darija, with no structured specs, thousands of reposts, and prices that range from honest to absurd. Finding a good laptop there means reading hundreds of ads.
 
-## Architecture
+This project turns that category into a clean, queryable market:
 
-```text
-Avito.ma ──► scraper ──► diff vs DB ──► staging queue ──► Gemini extraction ──► scoring ──► PostgreSQL
-                              │                                                               ▲
-                              └── price changes, sold / re-listed flags ──────────────────────┤
-                                                                                              │
-                                              Next.js dashboard + chat assistant (Groq) ──────┘
+- a **pipeline** that scrapes every listing each night, extracts the hardware specs with an LLM, removes the noise, and estimates what each laptop should cost;
+- a **dashboard** that shows every listing with its specs and how its price compares with the market;
+- an **assistant** that answers questions like "best deal on a gaming laptop under 10,000 DH in Casablanca" in English, French or Darija.
+
+The same approach applies to any marketplace or catalogue where the valuable data is locked in unstructured text: price monitoring, competitor tracking, catalogue enrichment, lead qualification.
+
+## Results
+
+Measured on the first complete run (October 2026):
+
+| | |
+| --- | --- |
+| Listings scraped | 22,936 from 700 pages, 0 failed pages, in 4.4 minutes |
+| Laptops extracted | 20,730 (the other 10% were accessories, monitors, repair services) |
+| Reposts detected | 7,501, leaving 13,229 distinct laptops. One seller had posted the same laptop 463 times |
+| Extraction time | 63 minutes for the whole category on a free-tier model |
+| Extraction accuracy | 195 of 196 field checks correct on a hand-checked set of 30 listings (see [Evaluation](#evaluation)) |
+| Price model error | 15.5% median, against 51% for guessing the market median |
+| Implausible prices caught | 262 listings priced more than 50% below their estimate |
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Avito.ma] -->|scrape| B[Diff against database]
+    B -->|new or changed| C[Staging queue]
+    B -->|price change, sold, back on sale| G[(PostgreSQL)]
+    C -->|batches of 50| D[Gemini: classify and extract specs]
+    D -->|validated rows| E[Score hardware]
+    E --> G
+    G --> F[Flag reposts]
+    F --> H[Estimate fair prices]
+    H --> G
+    G --> I[Dashboard]
+    G --> J[Assistant]
+    K[Groq] -.->|question to filters, results to summary| J
 ```
 
-| Part | Stack |
-| --- | --- |
-| Pipeline | Python 3.11+, `requests`, `beautifulsoup4`, `google-genai` (Gemini), `scikit-learn`, `psycopg` |
-| Database | PostgreSQL 14+ (any host: Supabase, Neon, local container) |
-| Web app | Next.js 16 (App Router), React 19, Tailwind CSS v4, Vercel AI SDK, Groq |
-| Automation | GitHub Actions (daily cron) |
+The pipeline runs nightly on GitHub Actions. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
 
-Both the pipeline and the web app talk to the database through a single `DATABASE_URL`.
+### Pipeline
 
-## Repository layout
+| Stage | What it does | The part that was hard |
+| --- | --- | --- |
+| **Scrape** | Reads the category page by page until Avito returns an empty one. | Knowing when a scrape is trustworthy. Pages are retried with backoff, and a scrape only counts as complete if the ads seen add up to 90% of the total Avito reports. A block page that renders as an empty list would otherwise look like the end of the category. |
+| **Diff** | Compares the scrape with the database: new, changed, repriced, gone, back. | Deciding a listing is sold. Listings shift between pages while a scrape runs, so a single miss proves nothing. A listing is marked sold only after a complete scrape, and only once it has been unseen for 36 hours. |
+| **Extract** | Sends listing text to Gemini, which classifies it and fills a typed schema. | Making an LLM dependable. Responses are schema-constrained and validated before anything is stored. Results are matched by ID, never by position. A listing that keeps failing is skipped instead of blocking the queue. Rejected listings are remembered so they are not paid for again every night. |
+| **Score** | Rates the hardware 0 to 1000 from CPU benchmarks, GPU tier, RAM, storage and screen. | Sellers write "i5 8ème" far more often than a model number. The scorer resolves a family and generation to the average of that generation's laptop chips. |
+| **Deduplicate** | Groups identical active listings and keeps the newest visible. | Reposts are flagged, not deleted. A deleted row that is still live would be scraped and extracted again the next day. |
+| **Price** | Estimates each laptop's fair market price with a gradient-boosted model. | Honesty. Each listing is priced by a model that never saw it (out-of-fold prediction), and the model predicts the median so absurd listings do not drag estimates down. |
 
-```text
-db/
-  migrations/          SQL schema, applied in order by `python db.py migrate`
-  seed/                Sample of 3,000 parsed listings for local demos
-pipelines/avito/
-  pipeline.py          Orchestrator: refresh → parse → dedup → pricing, recorded in pipeline_runs
-  scraper.py           Fetches listing pages and extracts ads
-  refresh.py           Diffs the scrape against the DB (new, changed, price update, sold)
-  parser.py            LLM spec extraction and laptop / non-laptop classification
-  score_laptops.py     Hardware scoring (CPU benchmarks, GPU tiers, RAM, storage, screen)
-  dedup.py             Flags duplicate active listings
-  pricing.py           Fair market price per listing (gradient-boosted model)
-  db.py                Connection, migrations, seed, run bookkeeping
-  tests/               pytest suite (runs against a real PostgreSQL)
-frontend/
-  app/avito/           Dashboard
-  app/avitopt/         Chat assistant UI
-  app/api/chat/        Chat endpoint (tool-calling over the laptops table)
-  lib/                 Database client and query builders
-compose.yaml           One-command local stack (database, sample data, web app)
-.github/workflows/     CI on every push, and the daily pipeline run
-```
+Details for each stage are in [`pipelines/avito/README.md`](pipelines/avito/README.md).
 
-## Data model
+### Fair price
 
-| Table | Purpose |
-| --- | --- |
-| `laptops` | One row per listing: raw fields, extracted specs, score, `fair_price` and `deal_pct` (asking price vs the estimate), sold status, timestamps |
-| `new_laptops` | Staging queue of scraped listings waiting for LLM extraction |
-| `price_history` | Every price a listing has had (written by a trigger) |
-| `rejected_listings` | Listings already rejected as non-laptops, so they are not sent to the LLM again |
-| `chat_usage` | Request counters behind the chat assistant's rate limits (hashed visitor keys, no IPs) |
-| `pipeline_runs` | One row per pipeline execution with status and counters |
+Every priced listing gets an estimate of what similar hardware is listed for, and the site shows the difference beside the price: `-22%` in green, `fair`, or `+30%`. This replaces a hand-tuned "value" score that rewarded anything cheap, including listings that were cheap because they were not real.
 
-The schema lives in [`db/migrations`](db/migrations).
+Listings more than 50% below their estimate (a gaming laptop "for 850 DH") are labelled for checking and kept out of the deal rankings. In practice these are deposits, typos, or parts.
+
+### Assistant
+
+The chat endpoint is public, so it is built to be safe to leave on the internet:
+
+1. **Validate and limit.** Requests are size-capped and rate-limited per visitor and globally. Counters live in PostgreSQL because serverless instances share no memory. Visitors are counted by a salted hash, so no IP address is stored.
+2. **Interpret.** A model turns the message into a typed filter form. It never writes SQL. Its output is sanitized and clamped before a parameterized query runs.
+3. **Answer.** The rows go straight to the table. A second model call writes a short summary from the filters, the statistics and a few short listing fields. It never sees the user's text, so there is nothing to type that makes it say something else.
+4. **Degrade.** Three models are tried in order. If all fail, the user still gets the table and a plain factual sentence.
+
+The browser sends only the new question, the last few questions and the previous filters. A forged conversation history is ignored.
+
+## Evaluation
+
+`pipelines/avito/evaluate.py` scores the extraction against [`eval/golden.json`](pipelines/avito/eval/golden.json): 30 real listings from three depths of the category, with the expected fields checked by reading each one.
+
+| Field | Before prompt fixes | After |
+| --- | --- | --- |
+| Keep or reject | 30/30 | 30/30 |
+| Brand, RAM, storage, GPU type | 28/28 each | 28/28 each |
+| CPU | 25/28 | 28/28 |
+| Screen size | 27/28 | 28/28 |
+| SSD flag | 28/28 | 27/28 |
+
+The evaluation found two real defects (CPU model numbers shortened to the family, and "écran 14 3 usb" read as 14.3 inches), which were fixed in the prompt. The set is small and was also used to tune the prompt, so read these figures as indicative, not as a held-out benchmark.
 
 ## Try it with Docker
 
@@ -71,7 +98,7 @@ The schema lives in [`db/migrations`](db/migrations).
 docker compose up --build
 ```
 
-Open http://localhost:3000. This starts PostgreSQL, applies the migrations, loads a sample of 3,000 real listings (with duplicates flagged and fair prices estimated) and serves the web app. No API key is needed to browse.
+Open http://localhost:3000. This starts PostgreSQL, applies the migrations, loads a sample of 3,000 real listings (with reposts flagged and fair prices estimated) and serves the web app. No API key is needed to browse.
 
 Two optional keys, set in a `.env` file next to `compose.yaml` or in your shell:
 
@@ -84,62 +111,91 @@ Two optional keys, set in a `.env` file next to `compose.yaml` or in your shell:
 
 You need a PostgreSQL database and its connection string.
 
-### 1. Database and pipeline
-
 ```bash
+# Pipeline
 cd pipelines/avito
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                                 # set DATABASE_URL and GEMINI_API_KEY
+python db.py migrate
+python db.py seed                                    # optional: load the sample listings
+python pipeline.py -p 5                              # trial run on 5 pages; omit -p for the whole category
 
-python db.py migrate        # create the schema
-python db.py seed           # optional: load the sample listings
-```
-
-Run the pipeline, in full or step by step:
-
-```bash
-python pipeline.py          # full run: scrape the whole category, parse, dedup
-python pipeline.py -p 5     # trial run on 5 pages
-python refresh.py -p 5      # scrape and diff 5 pages only
-python parser.py            # extract specs for everything in the staging queue
-```
-
-### 2. Web app
-
-```bash
+# Web app
 cd frontend
 npm install
-cp .env.example .env.local  # set DATABASE_URL and GROQ_API_KEY
+cp .env.example .env.local                           # set DATABASE_URL and GROQ_API_KEY
 npm run dev
 ```
 
-The dashboard works with only `DATABASE_URL`; `GROQ_API_KEY` is needed for the chat assistant.
-
-### 3. Tests
+## Tests and CI
 
 ```bash
-cd pipelines/avito
-pip install -r requirements-dev.txt
-TEST_DATABASE_URL=postgresql://... pytest
+cd pipelines/avito && pip install -r requirements-dev.txt && TEST_DATABASE_URL=postgresql://... pytest
+cd frontend && npm test
 ```
 
-Each database test runs in its own throwaway schema; the scraper and LLM are replaced by fakes, so no network or API key is needed. Without `TEST_DATABASE_URL`, database tests are skipped.
+- **Pipeline:** 58 tests. Database tests run against a real PostgreSQL, each in its own throwaway schema. Avito and the LLM are replaced by fakes, so no network or API key is needed.
+- **Web app:** 27 unit tests covering filter sanitizing, query building, request validation and rate limits.
+- **CI** ([`ci.yml`](.github/workflows/ci.yml)) runs both on every push, plus lint, type-check, a production build, and a smoke test that starts the whole Docker Compose stack and checks the dashboard serves listings.
 
-The web app has its own unit tests (filter sanitizing, query building, request validation, rate limits):
+## Repository layout
 
-```bash
-cd frontend
-npm test
+```text
+db/
+  migrations/          SQL schema, applied in order by `python db.py migrate`
+  seed/                3,000 sample listings for local runs
+pipelines/avito/
+  pipeline.py          Orchestrator: refresh, parse, dedup, pricing; every run is logged
+  scraper.py           Fetches listing pages and extracts ads
+  refresh.py           Diffs the scrape against the database
+  parser.py            LLM classification and spec extraction
+  score_laptops.py     Hardware scoring
+  dedup.py             Repost detection
+  pricing.py           Fair price model
+  evaluate.py          Extraction accuracy against eval/golden.json
+  tests/               pytest suite
+frontend/
+  app/avito/           Dashboard
+  app/avitopt/         Assistant
+  app/api/chat/        Chat endpoint
+  lib/chat/            Filters, query builder, rate limiter, model calls
+compose.yaml           One-command local stack
+.github/workflows/     CI and the nightly pipeline run
 ```
 
-## Automation
+## Data model
 
-[`ci.yml`](.github/workflows/ci.yml) runs on every push: the pipeline tests against a real PostgreSQL, the frontend lint, type-check, unit tests and build, and a smoke test that starts the whole Docker Compose stack and checks the dashboard serves the seeded listings.
+| Table | Purpose |
+| --- | --- |
+| `laptops` | One row per listing: specs, score, `fair_price`, `deal_pct`, previous price, sold status, timestamps |
+| `new_laptops` | Staging queue of listings waiting for extraction |
+| `rejected_listings` | Listings already rejected as non-laptops, so they are not extracted again |
+| `price_history` | Every price a listing has had, written by a trigger |
+| `pipeline_runs` | One row per run: status, counters, and the price model's error |
+| `chat_usage` | Rate-limit counters for the assistant |
 
+Row-level security is enabled on every table with no policies: the app and pipeline connect directly, and nothing is reachable through an auto-generated public API.
 
-[`avito-refresh.yml`](.github/workflows/avito-refresh.yml) runs the pipeline daily at 01:00 UTC, and on demand with an optional page limit. It needs two repository secrets: `DATABASE_URL` and `GEMINI_API_KEY`. The run exits non-zero if any step fails, and every run is logged in `pipeline_runs`.
+## Stack
+
+| | |
+| --- | --- |
+| Pipeline | Python, `requests`, `beautifulsoup4`, `google-genai`, `pydantic`, `scikit-learn`, `psycopg` |
+| Database | PostgreSQL (hosted on Supabase; any PostgreSQL 14+ works) |
+| Web app | Next.js (App Router), React, Tailwind CSS, Vercel AI SDK, Groq |
+| Automation | GitHub Actions, Docker Compose |
+
+## Limits
+
+- The fair price is an estimate from asking prices, not sale prices, and it knows nothing about a laptop's physical condition. A typical estimate is within 15% of the asking price; treat smaller differences as noise.
+- Listing dates come from Avito's relative labels ("il y a 3 jours"), so they are approximate for older listings.
+- The assistant runs on free-tier model quotas and is capped at 400 conversations a day.
 
 ## Scraping notes
 
-The scraper reads public listing pages at a limited rate and stores only listing content (title, description, price, city, link). Seller names and phone numbers are not stored, and every row links back to the original listing on Avito.
+The scraper reads public listing pages at a limited rate and stores only listing content: title, description, price, city and link. Seller names and phone numbers are not stored, and every row links back to the original listing on Avito.
+
+## Contact
+
+Mohamed Hajji, engineering student at EMINES, UM6P. [LinkedIn](https://www.linkedin.com/in/mohamed-hajji-301330282) · Mohamed.hajji@emines.um6p.ma
