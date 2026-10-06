@@ -56,6 +56,7 @@ frontend/
 | `new_laptops` | Staging queue of scraped listings waiting for LLM extraction |
 | `price_history` | Every price a listing has had (written by a trigger) |
 | `rejected_listings` | Listings already rejected as non-laptops, so they are not sent to the LLM again |
+| `chat_usage` | Request counters behind the chat assistant's rate limits (hashed visitor keys, no IPs) |
 | `pipeline_runs` | One row per pipeline execution with status and counters |
 
 The schema lives in [`db/migrations`](db/migrations).
@@ -108,7 +109,7 @@ Each database test runs in its own throwaway schema; the scraper and LLM are rep
 
 ## Automation
 
-[`avito-refresh.yml`](.github/workflows/avito-refresh.yml) runs the pipeline on demand, and daily at 01:00 UTC once its schedule is enabled. It needs two repository secrets: `DATABASE_URL` and `GEMINI_API_KEY`. The run exits non-zero if any step fails, and every run is logged in `pipeline_runs`.
+[`avito-refresh.yml`](.github/workflows/avito-refresh.yml) runs the pipeline daily at 01:00 UTC, and on demand with an optional page limit. It needs two repository secrets: `DATABASE_URL` and `GEMINI_API_KEY`. The run exits non-zero if any step fails, and every run is logged in `pipeline_runs`.
 
 ## Scraping notes
 

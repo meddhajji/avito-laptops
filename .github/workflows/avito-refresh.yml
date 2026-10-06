@@ -1,9 +1,8 @@
 name: Daily Avito Data Refresh
 
 on:
-  # Daily schedule is off until the database is on the new schema; re-enable with:
-  # schedule:
-  #   - cron: '0 1 * * *'   # 01:00 UTC, around 2:00 AM in Morocco
+  schedule:
+    - cron: '0 1 * * *'   # 01:00 UTC, around 2:00 AM in Morocco
 
   # Allows triggering the workflow manually from the GitHub Actions tab
   workflow_dispatch:

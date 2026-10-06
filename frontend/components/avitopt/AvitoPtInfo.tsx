@@ -5,28 +5,28 @@ export function AvitoPtInfo() {
   const steps = [
     {
         step: "01",
-        title: "Understand",
-        desc: "Before any AI is involved, your message is scanned for laptop-related intent using pattern matching across brands, specs, price keywords, and common follow-up phrases — in both French and English. If you're refining a previous search (\"cheaper\", \"same but 16GB RAM\"), your last set of filters is carried over automatically and merged with the new request.",
+        title: "Check",
+        desc: "Every message is validated and rate-limited before any AI is involved. The server receives only your question and the filters of your previous search, never a transcript it would have to trust.",
     },
     {
         step: "02",
-        title: "Extract",
-        desc: "Your query is passed to a language model equipped with a structured search tool. It reads your plain-text input and maps it to concrete parameters — keywords, price range, minimum RAM and storage, sort order, and result count. Phrases like \"cheapest\" or \"best gaming laptop\" are resolved into explicit sort and filter logic before the database is ever touched.",
+        title: "Interpret",
+        desc: "A language model turns your message, in English, French, Arabic or Darija, into structured filters: keywords, city, budget, minimum specs, sorting. It can only fill in that form. It never writes a database query.",
     },
     {
         step: "03",
         title: "Query",
-        desc: "The extracted parameters hit a PostgreSQL database of Avito laptop listings. Two queries run in parallel: one fetches the actual results, deduplicated by unique spec-and-price combination and capped to exclude sold items; the other computes aggregate stats — total match count, price range across all results, and the most represented city.",
+        desc: "The filters are sanitized, clamped and run as a parameterized query against the listings database. Duplicate posts and sold listings are left out unless you ask for them.",
     },
     {
         step: "04",
-        title: "Stream",
-        desc: "The full result set is pushed directly to the table as a real-time data stream, separate from the AI response. The model receives only a condensed summary of up to 5 listings — enough to write an accurate natural language reply without processing every row.",
+        title: "Answer",
+        desc: "The matching rows go straight to the table. A model then writes a short summary from the statistics and a few example rows only. It never sees your original text, so there is nothing to type that makes it say something else.",
     },
     {
         step: "05",
-        title: "Display",
-        desc: "The table columns adjust automatically to your query. If you asked about GPU, that column surfaces. If you filtered by city, location appears. Core columns — score, brand, model, price, and link — are always visible. Everything else is toggleable.",
+        title: "Fall back",
+        desc: "If a model is rate-limited or down, the next one takes over. If all of them are, you still get the table and a plain factual summary. Table columns adapt to what you asked about.",
     },
   ];
 

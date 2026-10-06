@@ -30,47 +30,29 @@ type LaptopFilters = {
   touchscreen?: boolean;
   suggested_columns?: string[];
   limit?: number;
-  sort_by?: "score" | "price";
+  sort_by?: "score" | "price" | "value";
   sort_order?: "asc" | "desc";
 };
 
-type UnknownRecord = Record<string, unknown>;
-
-type ToolStats = {
+type SearchStats = {
   total?: number;
   price_range?: string | null;
   top_city?: string | null;
   shown_in_table?: number;
 };
 
+/** Sent by the server with every search: the filters it applied and what it found. */
+type SearchData = { filters: LaptopFilters; stats: SearchStats };
+
 type MessagePart = {
   type?: string;
   text?: string;
   id?: string;
   data?: unknown;
-  input?: unknown;
-  args?: unknown;
-  output?: unknown;
-  result?: unknown;
-  state?: string;
-  toolCallId?: string;
-  toolName?: string;
-  errorText?: string;
-  error?: unknown;
-  toolInvocation?: {
-    toolCallId?: string;
-    toolName?: string;
-    input?: unknown;
-    args?: unknown;
-    output?: unknown;
-    result?: unknown;
-    state?: string;
-  };
 };
 
 type ChatMessage = UIMessage & {
   parts?: MessagePart[];
-  content?: string;
 };
 
 const CORE_COLS = new Set(["score", "brand", "model", "price", "link"]);
@@ -78,43 +60,28 @@ const DEFAULT_VISIBLE = new Set(ALL_COLUMNS.filter((column) => column.defaultOn)
 const LANE_CLASS = "mx-auto w-full max-w-[900px] px-4 sm:px-6";
 const CONTENT_LANE_CLASS = "mx-auto w-full max-w-[900px] pl-5 pr-3 sm:pl-7 sm:pr-5";
 
-const isRecord = (value: unknown): value is UnknownRecord =>
+// The server gets the new question, the last few questions and the previous
+// search's filters — not the transcript, which it would have no reason to trust.
+const transport = new DefaultChatTransport({
+  api: "/api/chat",
+  prepareSendMessagesRequest: ({ body }) => ({ body: body ?? {} }),
+});
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 
-const isLaptopArray = (value: unknown): value is Laptop[] => Array.isArray(value);
+const getSearchPart = (message: ChatMessage): MessagePart | null =>
+  message.parts?.find((part) => part.type === "data-search") ?? null;
 
-const parseJsonRecord = (value: unknown): UnknownRecord | null => {
-  if (isRecord(value)) return value;
-  if (typeof value !== "string") return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+const getSearchData = (part: MessagePart | null): SearchData | null => {
+  if (!part || !isRecord(part.data) || !isRecord(part.data.filters)) return null;
+  return { filters: part.data.filters as LaptopFilters, stats: isRecord(part.data.stats) ? (part.data.stats as SearchStats) : {} };
 };
 
-const isLaptopFilters = (value: unknown): value is LaptopFilters => isRecord(value);
-
-const getToolInput = (part: MessagePart): unknown =>
-  part.input ?? part.args ?? part.toolInvocation?.input ?? part.toolInvocation?.args;
-
-const getToolOutput = (part: MessagePart): unknown =>
-  part.output ?? part.result ?? part.toolInvocation?.output ?? part.toolInvocation?.result;
-
-const getToolState = (part: MessagePart): string | undefined =>
-  part.state ?? part.toolInvocation?.state;
-
-const getToolName = (part: MessagePart): string | undefined =>
-  part.toolName ?? part.toolInvocation?.toolName ?? part.type?.replace(/^tool-/, "");
-
-const isLaptopToolPart = (part: MessagePart) => {
-  const type = part.type ?? "";
-  const toolName = getToolName(part) ?? "";
-  return type === "tool-queryLaptops" || toolName === "queryLaptops";
+const getLaptops = (message: ChatMessage): Laptop[] => {
+  const part: MessagePart | undefined = message.parts?.find((candidate) => candidate.type === "data-laptops");
+  return Array.isArray(part?.data) ? (part.data as Laptop[]) : [];
 };
-
-const isDataLaptopsPart = (part: MessagePart) => part.type === "data-laptops";
 
 const getSmartColumns = (filters: LaptopFilters | null | undefined): Set<string> => {
   const visible = new Set(DEFAULT_VISIBLE);
@@ -126,45 +93,8 @@ const getSmartColumns = (filters: LaptopFilters | null | undefined): Set<string>
   return visible;
 };
 
-const getTextContent = (message: ChatMessage): string => {
-  if (typeof message.content === "string") return message.content;
-  return message.parts?.filter((part) => part.type === "text").map((part) => part.text ?? "").join("") ?? "";
-};
-
-const getToolCallId = (part: MessagePart, fallback: string) =>
-  part.toolCallId ?? part.toolInvocation?.toolCallId ?? part.id ?? fallback;
-
-const getToolResultRecord = (part: MessagePart): UnknownRecord | null => parseJsonRecord(getToolOutput(part));
-
-const getToolStats = (part: MessagePart): ToolStats | null => {
-  const result = getToolResultRecord(part);
-  if (!isRecord(result?.stats)) return null;
-  const stats = result.stats;
-  return {
-    total: typeof stats.total === "number" ? stats.total : undefined,
-    price_range: typeof stats.price_range === "string" ? stats.price_range : null,
-    top_city: typeof stats.top_city === "string" ? stats.top_city : null,
-    shown_in_table: typeof stats.shown_in_table === "number" ? stats.shown_in_table : undefined,
-  };
-};
-
-const getEffectiveFilters = (part: MessagePart): LaptopFilters | null => {
-  const result = getToolResultRecord(part);
-  const effectiveFilters = result?.effective_filters;
-  if (isLaptopFilters(effectiveFilters)) return effectiveFilters;
-  const input = getToolInput(part);
-  return isLaptopFilters(input) ? input : null;
-};
-
-const extractLaptopData = (message: ChatMessage, toolPart: MessagePart | null): Laptop[] => {
-  const dataPart = message.parts?.find(isDataLaptopsPart);
-  if (dataPart && isLaptopArray(dataPart.data)) return dataPart.data;
-
-  if (!toolPart) return [];
-  const result = getToolResultRecord(toolPart);
-  const compatibilityResults = result?.results;
-  return isLaptopArray(compatibilityResults) ? compatibilityResults : [];
-};
+const getTextContent = (message: ChatMessage): string =>
+  message.parts?.filter((part) => part.type === "text").map((part) => part.text ?? "").join("") ?? "";
 
 const formatFilters = (filters: LaptopFilters | null, resultCount: number) => {
   if (!filters) return resultCount > 0 ? "Best matches" : "No active filters";
@@ -181,7 +111,8 @@ const formatFilters = (filters: LaptopFilters | null, resultCount: number) => {
   if (filters.is_new === true) chunks.push("new only");
   if (filters.is_new === false) chunks.push("used only");
   if (filters.touchscreen === true) chunks.push("touchscreen");
-  if (filters.sort_by === "price") chunks.push(filters.sort_order === "asc" ? "cheapest first" : "highest price first");
+  if (filters.sort_by === "price") chunks.push(filters.sort_order === "desc" ? "highest price first" : "cheapest first");
+  if (filters.sort_by === "value") chunks.push("best value first");
 
   return chunks.length > 0 ? chunks.join(" · ") : "Best matches";
 };
@@ -280,11 +211,10 @@ function ErrorLine({ message }: { message: string }) {
   );
 }
 
-type StreamPhase = "idle" | "reading" | "searching" | "preparing";
+type StreamPhase = "idle" | "reading" | "preparing";
 
 const PHASE_LABELS: Record<Exclude<StreamPhase, "idle">, string> = {
-  reading: "Reading query...",
-  searching: "Accessing market data...",
+  reading: "Searching the market...",
   preparing: "Preparing answer...",
 };
 
@@ -292,20 +222,12 @@ const PHASE_LABELS: Record<Exclude<StreamPhase, "idle">, string> = {
 const getStreamPhase = (status: string, messages: ChatMessage[]): StreamPhase => {
   if (status !== "submitted" && status !== "streaming") return "idle";
   const lastMsg = messages[messages.length - 1];
-  // Still waiting for the assistant shell (or last message is still user)
-  if (!lastMsg || lastMsg.role !== "assistant") return "reading";
-  const parts = lastMsg.parts ?? [];
-  // Empty assistant shell during TTFT gap — no stream chunks yet
-  if (parts.length === 0) return "reading";
+  // Still waiting for the assistant's first chunk
+  if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.parts?.length) return "reading";
   // Text has started streaming — no indicator needed
   if (getTextContent(lastMsg).length > 0) return "idle";
-  const toolPart = parts.find(isLaptopToolPart) ?? null;
-  if (!toolPart) return "reading";
-  const toolDone = Boolean(
-    getToolOutput(toolPart) !== undefined ||
-    ["output-available", "result"].includes(getToolState(toolPart) ?? "")
-  );
-  return toolDone ? "preparing" : "searching";
+  // Results are on screen, the written summary is on its way
+  return getSearchPart(lastMsg) ? "preparing" : "reading";
 };
 
 function StreamingIndicator({ phase }: { phase: StreamPhase }) {
@@ -324,7 +246,7 @@ const ResultPanel = React.memo(function ResultPanel({
 }: {
   laptops: Laptop[];
   filters: LaptopFilters | null;
-  stats: ToolStats | null;
+  stats: SearchStats | null;
   visibleCols: Set<string>;
   toggleCol: (key: string) => void;
 }) {
@@ -368,12 +290,10 @@ const ResultPanel = React.memo(function ResultPanel({
 
 const MessageItem = React.memo(function MessageItem({
   message,
-  isActive,
   visibleCols,
   toggleCol,
 }: {
   message: ChatMessage;
-  isActive: boolean;
   visibleCols: Set<string>;
   toggleCol: (key: string) => void;
 }) {
@@ -391,17 +311,13 @@ const MessageItem = React.memo(function MessageItem({
 
   if (message.role !== "assistant" || !message.parts?.length) return null;
 
-  const laptopToolPart = message.parts.find(isLaptopToolPart) ?? null;
-  const toolState = laptopToolPart ? getToolState(laptopToolPart) : undefined;
-  const toolDone = Boolean(laptopToolPart && (getToolOutput(laptopToolPart) !== undefined || ["output-available", "result"].includes(toolState ?? "")));
-  const toolErrored = Boolean(laptopToolPart && (toolState === "output-error" || laptopToolPart.errorText || laptopToolPart.error));
-  const laptops = extractLaptopData(message, laptopToolPart);
-  const filters = laptopToolPart ? getEffectiveFilters(laptopToolPart) : null;
-  const stats = laptopToolPart ? getToolStats(laptopToolPart) : null;
+  const search = getSearchData(getSearchPart(message));
+  const laptops = getLaptops(message);
+  const filters = search?.filters ?? null;
+  const stats = search?.stats ?? null;
 
   const hasText = text.length > 0;
-  const showTable = toolDone && !toolErrored && laptops.length > 0;
-  const showEmpty = toolDone && laptops.length === 0 && !toolErrored && !isActive;
+  const showTable = Boolean(search) && laptops.length > 0;
 
   return (
     <div className="w-full space-y-4">
@@ -409,18 +325,6 @@ const MessageItem = React.memo(function MessageItem({
       {/* Table first — locks layout before text streams in, prevents end-of-stream jump */}
       {showTable && (
         <ResultPanel laptops={laptops} filters={filters} stats={stats} visibleCols={visibleCols} toggleCol={toggleCol} />
-      )}
-
-      {toolErrored && (
-        <ErrorLine message="The market search failed for this turn. Please retry or simplify the filters." />
-      )}
-
-      {showEmpty && (
-        <div className={cn(CONTENT_LANE_CLASS, "animate-in fade-in duration-200")}>
-          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[13px] text-muted-foreground">
-            No matching listings came back for this search.
-          </div>
-        </div>
       )}
 
       {hasText && (
@@ -434,7 +338,6 @@ const MessageItem = React.memo(function MessageItem({
   );
 }, (prev, next) => {
   return prev.message === next.message &&
-    prev.isActive === next.isActive &&
     prev.visibleCols === next.visibleCols &&
     prev.toggleCol === next.toggleCol;
 });
@@ -457,11 +360,9 @@ export default function AvitoPTPage() {
   const activeFiltersRef = useRef<LaptopFilters>({});
   const viewportRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastToolCallIdRef = useRef<string | null>(null);
+  const lastSearchIdRef = useRef<string | null>(null);
 
-  const { messages, sendMessage, status, error, stop, setMessages } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
-  });
+  const { messages, sendMessage, status, error, stop, setMessages } = useChat({ transport });
 
   useEffect(() => {
     const saved = loadSavedMessages();
@@ -519,34 +420,20 @@ export default function AvitoPTPage() {
     }
   }, [isNearBottom, scrollToLatest, status, typedMessages.length]);
 
+  // Keep the columns and the follow-up context in sync with the latest search
   useEffect(() => {
-    let syncTimer: number | undefined;
+    for (let index = typedMessages.length - 1; index >= 0; index -= 1) {
+      const part = getSearchPart(typedMessages[index]);
+      const search = getSearchData(part);
+      if (!part || !search) continue;
 
-    for (let messageIndex = typedMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-      const message = typedMessages[messageIndex];
-      if (message.role !== "assistant" || !message.parts) continue;
+      const searchId = part.id ?? typedMessages[index].id;
+      if (searchId === lastSearchIdRef.current) return;
+      lastSearchIdRef.current = searchId;
+      activeFiltersRef.current = search.filters;
 
-      for (const part of message.parts) {
-        if (!isLaptopToolPart(part)) continue;
-        const toolOutput = getToolOutput(part);
-        if (toolOutput === undefined) continue;
-
-        const toolCallId = getToolCallId(part, `${message.id}-${messageIndex}`);
-        if (toolCallId === lastToolCallIdRef.current) return;
-
-        const effectiveFilters = getEffectiveFilters(part);
-        if (effectiveFilters) {
-          activeFiltersRef.current = effectiveFilters;
-          syncTimer = window.setTimeout(() => {
-            setVisibleCols(getSmartColumns(effectiveFilters));
-          }, 0);
-        }
-        lastToolCallIdRef.current = toolCallId;
-        return () => {
-          if (syncTimer !== undefined) window.clearTimeout(syncTimer);
-        };
-      }
-      return;
+      const timer = window.setTimeout(() => setVisibleCols(getSmartColumns(search.filters)), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [typedMessages]);
 
@@ -557,7 +444,7 @@ export default function AvitoPTPage() {
     setVisibleCols(new Set(DEFAULT_VISIBLE));
     setLastSubmittedId(null);
     activeFiltersRef.current = {};
-    lastToolCallIdRef.current = null;
+    lastSearchIdRef.current = null;
     setIsNearBottom(true);
   }, [setMessages, stop]);
 
@@ -570,16 +457,27 @@ export default function AvitoPTPage() {
     setInputValue("");
     setIsNearBottom(true);
 
-    await sendMessage({ text }, { body: { lastFilters: activeFiltersRef.current } });
-  }, [inputValue, isLoading, sendMessage]);
+    const previousQuestions = typedMessages
+      .filter((message) => message.role === "user")
+      .map(getTextContent)
+      .slice(-3);
+
+    await sendMessage(
+      { text },
+      { body: { question: text, previousQuestions, lastFilters: activeFiltersRef.current } },
+    );
+  }, [inputValue, isLoading, sendMessage, typedMessages]);
 
   const errorMessage = useMemo(() => {
     if (!error) return null;
-    const raw = error.message || "";
-    if (raw.includes("429") || raw.toLowerCase().includes("limit")) {
-      return "High demand. Please wait a moment or try again.";
+    // The API answers errors with {"error": "..."} written for the user
+    try {
+      const parsed: unknown = JSON.parse(error.message);
+      if (isRecord(parsed) && typeof parsed.error === "string") return parsed.error;
+    } catch {
+      // not JSON: fall through to the generic message
     }
-    return "The current turn failed. Please retry.";
+    return "Something went wrong with this message. Please try again.";
   }, [error]);
 
   return (
@@ -633,18 +531,14 @@ export default function AvitoPTPage() {
               </div>
             ) : (
               <div className="space-y-7 px-0 pb-24 pt-8">
-                {typedMessages.map((message, index) => {
-                  const isActive = index === typedMessages.length - 1 && (status === "submitted" || status === "streaming");
-                  return (
-                    <MessageItem
-                      key={message.id}
-                      message={message}
-                      isActive={isActive}
-                      visibleCols={visibleCols}
-                      toggleCol={toggleCol}
-                    />
-                  );
-                })}
+                {typedMessages.map((message) => (
+                  <MessageItem
+                    key={message.id}
+                    message={message}
+                    visibleCols={visibleCols}
+                    toggleCol={toggleCol}
+                  />
+                ))}
 
                 <StreamingIndicator phase={streamPhase} />
 
@@ -678,7 +572,7 @@ export default function AvitoPTPage() {
             onStop={stop}
           />
           <p className="mt-2 text-center text-[11px] text-muted-foreground/60 leading-relaxed">
-            AvitoPT might see some lag or hit API caps.
+            Answers are generated by AI from live listings; check the listing before you buy.
           </p>
         </div>
       </div>
