@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Github, Mail, Phone, Check, Linkedin } from "lucide-react";
+import { Github, Mail, Linkedin } from "lucide-react";
 
 export function Navbar() {
     const pathname = usePathname();
-    const [copied, setCopied] = useState(false);
     // We read these from session storage dynamically so the links update 
     // when filters are changed in the dashboards.
     const getStoredParams = (key: string) => {
@@ -19,12 +17,6 @@ export function Navbar() {
 
     const avitoParams = getStoredParams("avito_dashboard_params");
 
-
-    const handleCopyPhone = () => {
-        navigator.clipboard.writeText("+212 XXXXXXXXX");
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
 
     const links = [
         { href: "/avito" + (pathname !== "/avito" ? avitoParams : ""), label: "Avito" },
@@ -63,15 +55,6 @@ export function Navbar() {
                     <a href="mailto:Mohamed.hajji@emines.um6p.ma" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
                         <Mail className="size-4" />
                     </a>
-                    <button 
-                        onClick={handleCopyPhone}
-                        className="group relative p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300"
-                    >
-                        {copied ? <Check className="size-4 text-emerald-500" /> : <Phone className="size-4" />}
-                        <span className="absolute -bottom-8 right-0 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-zinc-100 dark:text-zinc-900 pointer-events-none">
-                            {copied ? "Copied!" : "+212 XXXXXXXXX"}
-                        </span>
-                    </button>
                 </div>
             </nav>
         </header>
