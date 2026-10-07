@@ -1,6 +1,6 @@
 # Avito Laptop Tracker
 
-[![CI](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/meddhajji/avito-laptop-tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/meddhajji/avito-laptops/actions/workflows/ci.yml/badge.svg)](https://github.com/meddhajji/avito-laptops/actions/workflows/ci.yml)
 
 **Live: [avitolaptops.vercel.app](https://avitolaptops.vercel.app)**
 

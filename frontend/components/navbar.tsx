@@ -46,7 +46,7 @@ export function Navbar() {
                     </div>
                 </div>
                 <div className="flex items-center gap-1 text-muted-foreground">
-                    <a href="https://github.com/meddhajji/avito-laptop-tracker" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
+                    <a href="https://github.com/meddhajji/avito-laptops" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
                         <Github className="size-4" />
                     </a>
                     <a href="https://www.linkedin.com/in/mohamed-hajji-301330282" target="_blank" rel="noopener noreferrer" className="p-2 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:backdrop-blur-md border border-transparent hover:border-black/5 dark:hover:border-white/10 transition-all duration-300">
