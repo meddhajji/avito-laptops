@@ -2,7 +2,8 @@ name: Daily Avito Data Refresh
 
 on:
   schedule:
-    - cron: '0 1 * * *'   # 01:00 UTC, around 2:00 AM in Morocco
+    # Off the top of the hour: GitHub delays or drops scheduled runs at busy times
+    - cron: '23 1 * * *'   # 01:23 UTC, around 2:23 AM in Morocco
 
   # Allows triggering the workflow manually from the GitHub Actions tab
   workflow_dispatch:
