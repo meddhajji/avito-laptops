@@ -1,0 +1,12 @@
+# Temporary: checks whether GitHub fires scheduled workflows for this repository.
+name: Schedule probe
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Scheduled event received at $(date -u)"
