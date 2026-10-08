@@ -46,7 +46,7 @@ flowchart LR
     K[Groq] -.->|question to filters, results to summary| J
 ```
 
-The pipeline runs nightly on GitHub Actions, started by a Vercel Cron job because GitHub's own scheduler proved unreliable for this repository. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
+The pipeline runs nightly on GitHub Actions. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
 
 ### Pipeline
 
