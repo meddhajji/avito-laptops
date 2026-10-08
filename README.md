@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/meddhajji/avito-laptops/actions/workflows/ci.yml/badge.svg)](https://github.com/meddhajji/avito-laptops/actions/workflows/ci.yml)
 
-**Live: [avitolaptops.vercel.app](https://avitolaptops.vercel.app)**
+**Live: [avlaptops.vercel.app](https://avlaptops.vercel.app)**
 
 Avito.ma is Morocco's largest classifieds site. Its laptop category holds about 24,000 listings written as free text in French, Arabic and Darija, with no structured specs, thousands of reposts, and prices that range from honest to absurd. Finding a good laptop there means reading hundreds of ads.
 
@@ -46,7 +46,7 @@ flowchart LR
     K[Groq] -.->|question to filters, results to summary| J
 ```
 
-The pipeline runs nightly on GitHub Actions, started by a Vercel Cron job because GitHub's own scheduler does not fire for this repository. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
+The pipeline runs nightly on GitHub Actions, started by a Vercel Cron job. GitHub's own `schedule` trigger is also set, but it has never fired for this repository (a known, unresolved GitHub issue in 2026), so the external trigger is what actually runs it. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
 
 ### Pipeline
 

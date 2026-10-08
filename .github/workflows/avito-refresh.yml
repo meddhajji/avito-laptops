@@ -1,10 +1,16 @@
 name: Daily Avito Data Refresh
 
 on:
-  # Started nightly by Vercel Cron through the site's /api/cron/refresh route.
-  # GitHub's own `schedule` trigger does not fire for this repository: a no-op
-  # workflow scheduled every five minutes was never run in nine hours.
-  # It can also be started by hand from the Actions tab.
+  # GitHub's schedule trigger. It has never fired for this repository (a no-op
+  # workflow scheduled every five minutes was not run once in nine hours; see
+  # github.com/orgs/community/discussions/206019). It stays here so runs resume
+  # on their own if GitHub fixes it.
+  schedule:
+    - cron: '23 1 * * *'   # 01:23 UTC, around 2:23 AM in Morocco
+
+  # What actually starts the nightly run: Vercel Cron calls the site's
+  # /api/cron/refresh route, which dispatches this workflow. Also used for
+  # manual runs from the Actions tab.
   workflow_dispatch:
     inputs:
       pages:
