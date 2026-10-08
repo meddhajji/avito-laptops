@@ -1,17 +1,20 @@
 name: Daily Avito Data Refresh
 
 on:
-  schedule:
-    # Off the top of the hour: GitHub delays or drops scheduled runs at busy times
-    - cron: '23 1 * * *'   # 01:23 UTC, around 2:23 AM in Morocco
-
-  # Allows triggering the workflow manually from the GitHub Actions tab
+  # Started nightly by Vercel Cron through the site's /api/cron/refresh route:
+  # GitHub's own `schedule` trigger never fired for this repository.
+  # It can also be started by hand from the Actions tab.
   workflow_dispatch:
     inputs:
       pages:
         description: "Pages to scrape (leave empty for the whole category)"
         required: false
         type: string
+
+# Never run two refreshes at once; a second trigger waits for the first to finish
+concurrency:
+  group: avito-refresh
+  cancel-in-progress: false
 
 jobs:
   run-pipeline:
