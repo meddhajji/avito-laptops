@@ -2,7 +2,7 @@
 from __future__ import annotations
 """
 Avito Laptop Scraper
-Fetches laptop listings from Avito.ma, compresses text, outputs CSV.
+Fetches laptop listings from Avito.ma and normalizes their text.
 
 Key guards applied at ingestion:
   - URL category filter: only /ordinateurs_portables/ links accepted
@@ -16,7 +16,6 @@ means "gone".
 """
 import hashlib
 import re
-import csv
 import json
 import math
 import random
@@ -24,7 +23,6 @@ import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -43,21 +41,11 @@ BATCH_SIZE = 25          # pages fetched concurrently
 BATCH_DELAY = 2.0        # seconds between batches
 REQUEST_TIMEOUT = 15
 FETCH_ATTEMPTS = 3       # per page, with exponential backoff
-OUTPUT_DIR = Path(__file__).parent / "data"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
-]
-
-CSV_COLUMNS = [
-    "avito_id", "description", "price", "city", "link",
-    "is_shop", "has_delivery", "content_hash",
-    # --- Empty spec columns (filled later by the parser) ---
-    "brand", "model", "cpu", "ram", "storage", "ssd",
-    "gpu", "gpu_type", "gpu_vram",
-    "screen_size", "refresh_rate", "new", "touchscreen",
 ]
 
 # ---------------------------------------------------------------------------
@@ -379,39 +367,3 @@ def scrape(max_pages: int | None = None) -> ScrapeResult:
         "complete" if result.complete else "incomplete",
     )
     return result
-
-# ---------------------------------------------------------------------------
-# CSV output
-# ---------------------------------------------------------------------------
-def save_csv(ads: list[dict], path: Path | None = None) -> Path:
-    """Write ads to CSV with empty spec columns."""
-    if path is None:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        path = OUTPUT_DIR / f"laptops_{datetime.now():%Y%m%d_%H%M}.csv"
-
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
-        writer.writeheader()
-        for ad in ads:
-            row = {col: ad.get(col, "") for col in CSV_COLUMNS}
-            writer.writerow(row)
-
-    logger.info("Saved %d rows to %s", len(ads), path)
-    return path
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-def main(max_pages: int | None = None):
-    start = datetime.now()
-    result = scrape(max_pages)
-    path = save_csv(result.ads)
-    elapsed = (datetime.now() - start).total_seconds()
-    print(f"\nDone: {len(result.ads)} listings saved to {path} in {elapsed:.1f}s")
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Avito Laptop Scraper")
-    parser.add_argument("-p", "--pages", type=int, default=None, help="Number of pages to scrape (default: whole category)")
-    args = parser.parse_args()
-    main(args.pages)

@@ -24,7 +24,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = Path(os.getenv("MIGRATIONS_DIR", REPO_ROOT / "db" / "migrations"))
 SEED_CSV = Path(os.getenv("SEED_CSV", REPO_ROOT / "db" / "seed" / "laptops_sample.csv"))
 

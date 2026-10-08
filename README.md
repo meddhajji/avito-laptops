@@ -46,7 +46,7 @@ flowchart LR
     K[Groq] -.->|question to filters, results to summary| J
 ```
 
-The pipeline runs nightly on GitHub Actions. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
+The pipeline runs nightly on GitHub Actions, started by a Vercel Cron job because GitHub's own scheduler does not fire for this repository. The web app is a Next.js project on Vercel. Both read and write one PostgreSQL database through a single `DATABASE_URL`.
 
 ### Pipeline
 
@@ -59,7 +59,7 @@ The pipeline runs nightly on GitHub Actions. The web app is a Next.js project on
 | **Deduplicate** | Groups identical active listings and keeps the newest visible. | Reposts are flagged, not deleted. A deleted row that is still live would be scraped and extracted again the next day. |
 | **Price** | Estimates each laptop's fair market price with a gradient-boosted model. | Honesty. Each listing is priced by a model that never saw it (out-of-fold prediction), and the model predicts the median so absurd listings do not drag estimates down. |
 
-Details for each stage are in [`pipelines/avito/README.md`](pipelines/avito/README.md).
+Details for each stage are in [`pipeline/README.md`](pipeline/README.md).
 
 ### Fair price
 
@@ -80,7 +80,7 @@ The browser sends only the new question, the last few questions and the previous
 
 ## Evaluation
 
-`pipelines/avito/evaluate.py` scores the extraction against [`eval/golden.json`](pipelines/avito/eval/golden.json): 30 real listings from three depths of the category, with the expected fields checked by reading each one.
+`pipeline/evaluate.py` scores the extraction against [`eval/golden.json`](pipeline/eval/golden.json): 30 real listings from three depths of the category, with the expected fields checked by reading each one.
 
 | Field | Before prompt fixes | After |
 | --- | --- | --- |
@@ -113,7 +113,7 @@ You need a PostgreSQL database and its connection string.
 
 ```bash
 # Pipeline
-cd pipelines/avito
+cd pipeline
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                                 # set DATABASE_URL and GEMINI_API_KEY
@@ -131,7 +131,7 @@ npm run dev
 ## Tests and CI
 
 ```bash
-cd pipelines/avito && pip install -r requirements-dev.txt && TEST_DATABASE_URL=postgresql://... pytest
+cd pipeline && pip install -r requirements-dev.txt && TEST_DATABASE_URL=postgresql://... pytest
 cd frontend && npm test
 ```
 
@@ -145,7 +145,7 @@ cd frontend && npm test
 db/
   migrations/          SQL schema, applied in order by `python db.py migrate`
   seed/                3,000 sample listings for local runs
-pipelines/avito/
+pipeline/
   pipeline.py          Orchestrator: refresh, parse, dedup, pricing; every run is logged
   scraper.py           Fetches listing pages and extracts ads
   refresh.py           Diffs the scrape against the database

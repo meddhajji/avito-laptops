@@ -31,7 +31,7 @@ services:
   setup:
     build:
       context: .
-      dockerfile: pipelines/avito/Dockerfile
+      dockerfile: pipeline/Dockerfile
     command: sh -c "python db.py migrate && python db.py seed"
     environment:
       DATABASE_URL: *database-url
@@ -55,7 +55,7 @@ services:
     profiles: ["pipeline"]
     build:
       context: .
-      dockerfile: pipelines/avito/Dockerfile
+      dockerfile: pipeline/Dockerfile
     environment:
       DATABASE_URL: *database-url
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

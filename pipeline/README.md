@@ -9,7 +9,7 @@ python parser.py -n 50      # parse about 50 queued listings
 python dedup.py             # recompute duplicate flags
 python pricing.py           # recompute fair prices
 python admin_score.py --all # re-score every laptop after changing the scoring
-python verify.py -n 20      # spot-check stored rows against their live Avito pages
+python evaluate.py --errors # extraction accuracy against eval/golden.json
 ```
 
 ## Stages

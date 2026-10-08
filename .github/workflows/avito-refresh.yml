@@ -1,11 +1,10 @@
 name: Daily Avito Data Refresh
 
 on:
-  schedule:
-    # Off the top of the hour, when GitHub's scheduler is busiest
-    - cron: '23 1 * * *'   # 01:23 UTC, around 2:23 AM in Morocco
-
-  # Allows triggering the workflow manually from the GitHub Actions tab
+  # Started nightly by Vercel Cron through the site's /api/cron/refresh route.
+  # GitHub's own `schedule` trigger does not fire for this repository: a no-op
+  # workflow scheduled every five minutes was never run in nine hours.
+  # It can also be started by hand from the Actions tab.
   workflow_dispatch:
     inputs:
       pages:
@@ -36,10 +35,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r pipelines/avito/requirements.txt
+          pip install -r pipeline/requirements.txt
           
       - name: Run data pipeline
-        working-directory: ./pipelines/avito
+        working-directory: ./pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

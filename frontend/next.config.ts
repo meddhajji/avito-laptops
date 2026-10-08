@@ -10,16 +10,6 @@ const nextConfig: NextConfig = {
       static: 3600,
     },
   },
-  images: {
-    formats: ["image/avif", "image/webp"],
-    qualities: [75, 95],
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**.avito.ma",
-      },
-    ],
-  },
 };
 
 export default nextConfig;

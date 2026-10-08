@@ -1,7 +1,6 @@
 .git
 .github
 .venv
-scratch
 **/node_modules
 **/.next
 **/__pycache__
